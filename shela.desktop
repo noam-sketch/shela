@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Shela IDE
+Comment=AI-Enhanced IDE & Terminal
+Exec=/home/noam/MyShell/shela_flutter/build/linux/x64/release/bundle/shela %u
+Icon=/home/noam/MyShell/assets/shela_icon.png
+Terminal=false
+Categories=Development;IDE;
+StartupNotify=true
+StartupWMClass=com.example.shela

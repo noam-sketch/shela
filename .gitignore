@@ -1,0 +1,16 @@
+# shela_flutter
+/shela_flutter/build/
+/shela_flutter/.dart_tool/
+/shela_flutter/.flutter-plugins
+/shela_flutter/.flutter-plugins-dependencies
+/shela_flutter/.packages
+/shela_flutter/pubspec.lock
+/shela_flutter/.metadata
+
+# Linux artifacts
+/shela_flutter/linux/flutter/ephemeral/
+
+# Root artifacts
+shela-linux-x64.tar.gz
+.env
+node_modules/
