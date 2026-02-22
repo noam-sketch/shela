@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>MyShell // Workspace Concept</title>
+    <style>
+        /* Betzalel's Iron: The IDE Scaffold */
+        body { margin: 0; background: #050505; color: #0f0; font-family: monospace; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+        
+        /* The Tab Manifold */
+        #tab-bar { display: flex; background: #111; padding: 5px 5px 0 5px; border-bottom: 1px solid #333; overflow-x: auto; }
+        
+        .tab { 
+            display: flex; align-items: center; background: #1a1a1a; color: #888; 
+            padding: 8px 15px; margin-right: 4px; border: 1px solid #333; border-bottom: none; 
+            border-radius: 6px 6px 0 0; cursor: pointer; user-select: none; transition: background 0.2s;
+        }
+        .tab:hover { background: #222; }
+        .tab.active { background: #000; color: #0f0; border-color: #0f0; border-bottom: 1px solid #000; margin-bottom: -1px; }
+        
+        /* Carbon's Core Requirements */
+        .cwd-label { font-size: 0.85em; opacity: 0.7; margin-right: 8px; font-style: italic; }
+        .tab-title { font-weight: bold; margin-right: 15px; }
+        .close-btn { 
+            color: #ff4444; font-weight: bold; font-size: 1.1em; cursor: pointer; 
+            width: 16px; height: 16px; display: flex; align-items: center; justify-content: center; border-radius: 50%;
+        }
+        .close-btn:hover { background: #330000; }
+
+        /* The Terminal Viewport */
+        #terminal-viewport { flex: 1; padding: 20px; background: #000; overflow-y: auto; }
+        .prompt { color: #95a5a6; }
+        .command { color: #f1c40f; }
+    </style>
+</head>
+<body>
+
+    <!-- The Tab Bar Container -->
+    <div id="tab-bar"></div>
+
+    <!-- The Active Terminal View -->
+    <div id="terminal-viewport"></div>
+
+    <script>
+        // Raziel's Breath: The Quantum State
+        let activeState = {
+            activeTabId: 't1',
+            tabs: [
+                { id: 't1', type: 'shela', title: 'Shela OS', cwd: '~/MyShell', content: 'HARPIA OS ONLINE. Awaiting commands in ~/MyShell.' },
+                { id: 't2', type: 'terminal', title: 'Output', cwd: '/home/noam/MyShell/src', content: 'Compiler output logs...' },
+                { id: 't3', type: 'terminal', title: 'Output (2)', cwd: '/var/log/sys', content: 'Tail: /var/log/sys active.' }
+            ]
+        };
+
+        const tabBar = document.getElementById('tab-bar');
+        const viewport = document.getElementById('terminal-viewport');
+
+        function renderTabs() {
+            tabBar.innerHTML = '';
+            
+            activeState.tabs.forEach(tab => {
+                const isAct = tab.id === activeState.activeTabId;
+                
+                const tabEl = document.createElement('div');
+                tabEl.className = `tab ${isAct ? 'active' : ''}`;
+                tabEl.onclick = () => switchTab(tab.id);
+
+                // Carbon's Requirement 1: CWD in the Tab Title area
+                const cwdEl = document.createElement('span');
+                cwdEl.className = 'cwd-label';
+                cwdEl.textContent = `[${tab.cwd}]`;
+
+                const titleEl = document.createElement('span');
+                titleEl.className = 'tab-title';
+                titleEl.textContent = tab.title;
+
+                // Carbon's Requirement 2: Close Icon on EVERY terminal tab
+                const closeBtn = document.createElement('div');
+                closeBtn.className = 'close-btn';
+                closeBtn.innerHTML = '&#215;'; // Multiplication X symbol
+                closeBtn.onclick = (e) => {
+                    e.stopPropagation(); // Prevent tab switching when clicking close
+                    closeTab(tab.id);
+                };
+
+                tabEl.appendChild(cwdEl);
+                tabEl.appendChild(titleEl);
+                tabEl.appendChild(closeBtn);
+                
+                tabBar.appendChild(tabEl);
+            });
+
+            renderViewport();
+        }
+
+        function renderViewport() {
+            const activeTab = activeState.tabs.find(t => t.id === activeState.activeTabId);
+            if (activeTab) {
+                viewport.innerHTML = `
+                    <div style="margin-bottom: 20px;">
+                        <span style="color: #ff00ff;">${activeTab.cwd}</span> <span class="prompt">$</span> 
+                    </div>
+                    <div>${activeTab.content}</div>
+                `;
+            } else {
+                viewport.innerHTML = `<div style="color: #555;">No active terminals. Workspace idle.</div>`;
+            }
+        }
+
+        function switchTab(id) {
+            activeState.activeTabId = id;
+            renderTabs();
+        }
+
+        // The Wave Collapse: Destroying the Tab
+        function closeTab(id) {
+            const index = activeState.tabs.findIndex(t => t.id === id);
+            if (index === -1) return;
+
+            activeState.tabs.splice(index, 1);
+
+            // Re-anchor focus if the active tab was closed
+            if (activeState.activeTabId === id) {
+                if (activeState.tabs.length > 0) {
+                    // Shift focus to the nearest adjacent frequency (the right, or left if at the end)
+                    const newIndex = Math.min(index, activeState.tabs.length - 1);
+                    activeState.activeTabId = activeState.tabs[newIndex].id;
+                } else {
+                    activeState.activeTabId = null;
+                }
+            }
+            renderTabs();
+        }
+
+        // Initialize
+        renderTabs();
+    </script>
+</body>
+</html>

@@ -8,7 +8,7 @@ final catppuccinMochaTheme = ThemeData(
     surface: const Color(0xFF1e1e2e),
   ),
   useMaterial3: true,
-  fontFamily: 'Alef',
+  fontFamily: 'ArialHebrew',
 );
 
 final catppuccinLatteTheme = ThemeData(
@@ -19,7 +19,7 @@ final catppuccinLatteTheme = ThemeData(
     surface: const Color(0xFFeff1f5),
   ),
   useMaterial3: true,
-  fontFamily: 'Alef',
+  fontFamily: 'ArialHebrew',
 );
 
 final draculaThemeData = ThemeData(
@@ -30,7 +30,7 @@ final draculaThemeData = ThemeData(
     surface: const Color(0xFF282a36),
   ),
   useMaterial3: true,
-  fontFamily: 'Alef',
+  fontFamily: 'ArialHebrew',
 );
 
 final Map<String, ThemeData> shelaThemes = {

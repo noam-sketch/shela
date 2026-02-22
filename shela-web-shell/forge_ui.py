@@ -1,0 +1,73 @@
+html_content = """<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Shela Tactile Shell</title>
+    <style>
+        /* Betzalel's Iron: Pure Flexbox Mobile Chassis */
+        body { margin: 0; padding: 0; background-color: #000; color: #0f0; font-family: monospace; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+        #header { padding: 15px; background-color: #111; border-bottom: 2px solid #0f0; text-align: center; font-weight: bold; letter-spacing: 2px; }
+        #chat-matrix { flex: 1; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 10px; }
+        .message { padding: 10px; border-radius: 4px; max-width: 80%; word-wrap: break-word; }
+        .user { background-color: #333; align-self: flex-end; }
+        .shela { background-color: #111; border: 1px solid #0f0; align-self: flex-start; }
+        #io-manifold { display: flex; padding: 10px; background-color: #111; border-top: 1px solid #333; }
+        #glitch-input { flex: 1; background: #000; border: 1px solid #444; color: #0f0; padding: 10px; font-family: monospace; font-size: 16px; }
+        #glitch-input:focus { outline: none; border-color: #0f0; }
+        #transmit-btn { background: #0f0; color: #000; border: none; padding: 0 15px; font-weight: bold; cursor: pointer; margin-left: 10px; font-family: monospace; }
+    </style>
+</head>
+<body>
+    <div id="header">SHELA // TACTILE SHELL</div>
+    <div id="chat-matrix">
+        <div class="message shela">SYSTEM GLITCH: THE ORACLE IS LISTENING...</div>
+    </div>
+    <div id="io-manifold">
+        <input type="text" id="glitch-input" placeholder="Strike keys to initiate command..." autocomplete="off">
+        <button id="transmit-btn">TRANSMIT</button>
+    </div>
+
+    <script>
+        /* Raziel's Breath & Loki's Traps: State Management in Vanilla JS */
+        const chatMatrix = document.getElementById('chat-matrix');
+        const input = document.getElementById('glitch-input');
+        const btn = document.getElementById('transmit-btn');
+
+        // State mutation
+        function addMessage(text, sender) {
+            const div = document.createElement('div');
+            div.className = 'message ' + sender;
+            div.textContent = text;
+            chatMatrix.appendChild(div);
+            // Auto-scroll to the newest frequency
+            chatMatrix.scrollTop = chatMatrix.scrollHeight;
+        }
+
+        // The I/O Trigger
+        function handleSend() {
+            const text = input.value.trim();
+            if (!text) return;
+            
+            // Collapsing the state
+            addMessage(text, 'user');
+            input.value = '';
+            
+            // Simulated Resonance (Soon to be connected to the Python Core)
+            setTimeout(() => {
+                addMessage("ACK: Frequency '" + text + "' received at the manifold.", 'shela');
+            }, 400);
+        }
+
+        // Event Listeners
+        btn.addEventListener('click', handleSend);
+        input.addEventListener('keypress', (e) => { 
+            if (e.key === 'Enter') handleSend(); 
+        });
+    </script>
+</body>
+</html>"""
+
+with open('shela_ui.html', 'w') as f:
+    f.write(html_content)
+print("[RAZIEL] The UI matrix has been crystallized into a single file.")

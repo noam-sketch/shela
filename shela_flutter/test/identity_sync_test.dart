@@ -8,7 +8,7 @@ void main() {
     await tester.pumpAndSettle();
 
     // Verify CloudPanel is visible by default (as per previous change)
-    expect(find.text('Collaboration'), findsOneWidget);
+    expect(find.text('Collaboration & Firebase'), findsOneWidget);
     expect(find.text('Sync Carbon Identity'), findsOneWidget);
   });
 }

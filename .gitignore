@@ -15,3 +15,14 @@ shela-linux-x64.tar.gz
 .env
 node_modules/
 client_secret_*.json
+client_secret_*.json
+.env
+
+# Python artifacts
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.coverage
+htmlcov/

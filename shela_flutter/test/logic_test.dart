@@ -89,6 +89,7 @@ void main() {
       final session = TerminalSession(
         terminal: terminal,
         controller: controller,
+        focusNode: FocusNode(),
         pty: null,
         title: 'Test Session',
       );

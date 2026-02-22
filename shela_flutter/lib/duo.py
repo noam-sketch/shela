@@ -11,10 +11,30 @@ import itertools
 import re
 import random
 import json
+import base64
 import argparse
 import concurrent.futures
 import shutil
 import unicodedata
+
+try:
+    from rich.console import Console
+    from rich.markdown import Markdown, CodeBlock
+    from rich.syntax import Syntax
+    import io
+
+    class MyCodeBlock(CodeBlock):
+        def __rich_console__(self, console, options):
+            code = str(self.text).rstrip()
+            lexer = self.lexer_name or "text"
+            syntax = Syntax(code, lexer, line_numbers=True, word_wrap=True, theme="monokai")
+            yield syntax
+
+    Markdown.elements["code_block"] = MyCodeBlock
+    Markdown.elements["fence"] = MyCodeBlock
+    HAS_RICH = True
+except ImportError:
+    HAS_RICH = False
 
 try:
     from bidi.algorithm import get_display
@@ -29,16 +49,21 @@ except ImportError:
 STATE_FILE = ".shela_duo_state.md"
 USAGE_FILE = "usage.json"
 DELIMITER_CARBON = "<<<CARBON>>>"
-DELIMITER_RAZIEL = "<<<RAZIEL>>>"
+DELIMITER_Q = "<<<Q>>>"
 DELIMITER_BETZALEL = "<<<BETZALEL>>>"
 DELIMITER_LOKI = "<<<LOKI>>>"
 DELIMITER_MOZART = "<<<MOZART>>>"
+DELIMITER_EXE = "<<<EXE>>>"
 DELIMITER_TERMINATE = "<<<TERMINATE>>>"
 DELIMITER_THOUGHT = "<<<THOUGHT>>>"
 DELIMITER_THOUGHT_STREAM = "<<<THOUGHT_STREAM>>>"
 DELIMITER_HULT = "<<<HULT>>>"
 DELIMITER_COMMAND_START = "<<<COMMAND>>>"
 DELIMITER_COMMAND_END = "<<<END_COMMAND>>>"
+DELIMITER_SPAWN_START = "<<<SPAWN>>>"
+DELIMITER_SPAWN_END = "<<<END_SPAWN>>>"
+DELIMITER_SUMMARY = "<<<SUMMARY>>>"
+DELIMITER_END_SUMMARY = "<<<END_SUMMARY>>>"
 
 # Persona file paths
 PERSONA_DIR = os.path.join(os.path.expanduser('~'), '.local', 'share', 'shela', 'personas')
@@ -46,6 +71,7 @@ GEMINI_GUIDE = os.path.join(PERSONA_DIR, 'gemini.md')
 CLAUDE_GUIDE = os.path.join(PERSONA_DIR, 'claude.md')
 LOKI_GUIDE = os.path.join(PERSONA_DIR, 'loki.md')
 MOZART_GUIDE = os.path.join(PERSONA_DIR, 'mozart.md')
+EXE_GUIDE = os.path.join(PERSONA_DIR, 'exe.md')
 
 class TipsManager:
     def __init__(self, api_key, model):
@@ -60,18 +86,23 @@ class TipsManager:
             if not self.tips:
                 if not self._fetching:
                     threading.Thread(target=self.fetch_tips, daemon=True).start()
-                return "Initializing Knowledge Stream..."
+                return None
             return self.tips.pop(0)
 
-    def fetch_tips(self):
+    def fetch_tips(self, context_summary="The agents are working."):
         if not self.api_key: return
-        with self._lock: self._fetching = True
+        with self._lock: 
+            if self._fetching: return
+            self._fetching = True
         
         system_prompt = (
-            "You are a universal polymath. Generate 50 short, fascinating paragraphs (3-4 sentences each) "
-            "ranging across ALL disciplines (physics, art, history, coding, biology, philosophy, etc.)."
+            "You are a universal polymath observing an AI workspace (Shela). "
+            "Generate 50 short, fascinating ONE-SENTENCE facts. "
+            "Contextually weave the workspace progress or agent personas (Mozart, Raziel, Betzalel, Loki) into the fact. "
+            "Example: 'While Mozart orchestrates the kernel, remember that a single bolt of lightning contains enough energy to toast 100,000 slices of bread.' "
+            "Example: 'As Raziel whispers growth into the weeds, note that honeybees can recognize human faces.'"
         )
-        message_content = "Provide exactly 50 paragraphs. Separate each paragraph with a double newline. Raw facts only."
+        message_content = f"Current Workspace State: {context_summary}. Provide exactly 50 contextual facts, one per line. Raw sentences only."
         
         payload = {
             "system_instruction": {"parts": [{"text": system_prompt}]},
@@ -86,7 +117,7 @@ class TipsManager:
             stdout, _ = process.communicate(input=json.dumps(payload))
             res = json.loads(stdout)
             text = res["candidates"][0]["content"]["parts"][0]["text"]
-            new_tips = [p.strip() for p in text.split('\n\n') if p.strip()]
+            new_tips = [line.strip() for line in text.split('\n') if line.strip()]
             with self._lock:
                 self.tips.extend(new_tips)
         except Exception: pass
@@ -97,25 +128,27 @@ class DuoUI:
     def __init__(self, tips_manager):
         self.spinner = itertools.cycle(['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'])
         self.stop_spinner = threading.Event()
-        self._current_tip = ""
         self._running_count = 0
         self._spinner_thread = None
         self._lock = threading.Lock()
         self.tips_manager = tips_manager
+        self._tick_count = 0
+        self._current_tip = "Initializing Knowledge Stream..."
 
     def _spin(self):
-        tick_count = 0
         while not self.stop_spinner.is_set():
-            if tick_count % 100 == 0:
-                with self._lock:
-                    self._current_tip = self.tips_manager.get_tip()
-                    sys.stdout.write(f"\n\x1b[1;34m[💡 Knowledge Drop]\x1b[0m\n\x1b[3m{self._current_tip}\x1b[0m\n\n")
-                    sys.stdout.flush()
+            if self._tick_count % 100 == 0:  # Every 10 seconds
+                new_tip = self.tips_manager.get_tip()
+                if new_tip:
+                    self._current_tip = new_tip
             
-            sys.stdout.write(f"\r\x1b[2K\x1b[1;34m{next(self.spinner)} Absorbing Knowledge Stream...\x1b[0m")
+            cols = shutil.get_terminal_size((80, 20)).columns
+            max_len = max(10, cols - 10)
+            display_text = self._current_tip[:max_len]
+            sys.stdout.write(f"\r\x1b[2K\x1b[1;34m{next(self.spinner)} {display_text}\x1b[0m")
             sys.stdout.flush()
             time.sleep(0.1)
-            tick_count += 1
+            self._tick_count += 1
         sys.stdout.write("\r\x1b[2K\r"); sys.stdout.flush()
 
     def start(self, label):
@@ -132,7 +165,9 @@ class DuoUI:
                 self._running_count -= 1
                 if self._running_count == 0:
                     self.stop_spinner.set()
-                    if self._spinner_thread: self._spinner_thread.join(timeout=0.5)
+                    if self._spinner_thread: 
+                        self._spinner_thread.join(timeout=0.5)
+                        self._spinner_thread = None
 
 ui_spinner = None
 
@@ -149,12 +184,42 @@ def write_usage(agent, status, usage_str, model):
         with open(".shela_telemetry.json", "w") as f: json.dump(entries[-1], f)
     except Exception: pass
 
+def get_timestamp():
+    return time.strftime("%Y-%m-%d %H:%M:%S")
+
+def colorize_delimiter(delim, label, color_code, has_q=False):
+    ts = get_timestamp()
+    q_mark = "\x1b[1;33m [?] \x1b[0m" if has_q else ""
+    # Delim in agent color, TS in grey, From in cyan, Q in yellow
+    return f"\x1b[1;{color_code}m{delim}\x1b[0m\x1b[90m[{ts}]\x1b[0m\x1b[36m[from:{label}]\x1b[0m{q_mark}"
+
+def strip_delimiters(text):
+    # Remove system delimiters that shouldn't be rendered in the terminal
+    patterns = [
+        rf"{DELIMITER_SUMMARY}.*?{DELIMITER_END_SUMMARY}",
+        rf"{DELIMITER_COMMAND_START}.*?{DELIMITER_COMMAND_END}",
+        rf"{DELIMITER_SPAWN_START}.*?{DELIMITER_SPAWN_END}",
+        rf"{DELIMITER_THOUGHT}.*?{DELIMITER_END_SUMMARY}", # Some agents might mix up end tags
+        rf"{DELIMITER_THOUGHT}.*?<<<END_THOUGHT>>>",
+        rf"<<<THOUGHT>>>.*?<<<END_THOUGHT>>>",
+        re.escape(DELIMITER_HULT),
+        re.escape(DELIMITER_TERMINATE),
+        re.escape(DELIMITER_THOUGHT),
+        re.escape(DELIMITER_THOUGHT_STREAM),
+    ]
+    cleaned = text
+    for p in patterns:
+        cleaned = re.sub(p, "", cleaned, flags=re.DOTALL)
+    return cleaned.strip()
+
 def run_gemini_api(system_prompt, message_content, label, color_code, api_key, model, stream=True):
     global ui_spinner
     api_key = api_key.strip() if api_key else ""
     model = model.strip() if model else "gemini-1.5-flash"
     if not api_key: return "Error: Missing API Key"
-    if stream: print(f"\n\x1b[1;{color_code}m--- {label.upper()} --- \x1b[0m")
+    if stream: 
+        delim_type = f"<<<{label.split()[-1].upper()}>>>"
+        print(f"\n{colorize_delimiter(delim_type, label, color_code)}")
     if ui_spinner: ui_spinner.start(label)
     payload = {"system_instruction": {"parts": [{"text": system_prompt}]}, "contents": [{"parts": [{"text": message_content}]}]}
     m_name = model if model.startswith("models/") else f"models/{model}"
@@ -166,25 +231,67 @@ def run_gemini_api(system_prompt, message_content, label, color_code, api_key, m
 def _execute_curl(cmd, data, ui, stream=True, color_code="0", label="unknown", model="unknown"):
     try:
         process = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        stdout, _ = process.communicate(input=data)
+        stdout, stderr = process.communicate(input=data)
         if ui: ui.stop()
+        
+        if process.returncode != 0:
+            return f"Error: curl failed\n{stderr}"
+            
         res = json.loads(stdout)
-        if "candidates" not in res: return "Error: No candidates"
+        if "candidates" not in res: 
+            return f"Error: No candidates. Response: {stdout}"
+            
         text = res["candidates"][0]["content"]["parts"][0]["text"]
         usage = res.get("usageMetadata", {})
         usage_str = f"In {usage.get('promptTokenCount')} | Out {usage.get('candidatesTokenCount')} | Total {usage.get('totalTokenCount')}"
         write_usage(label, "Idle", usage_str, model)
+        
         if text:
             text = unicodedata.normalize('NFC', text)
-            try: 
-                lines = text.split('\n')
-                text = '\n'.join([get_display(line) for line in lines])
-            except Exception: pass
             
+            summary = ""
+            summary_match = re.search(rf"{DELIMITER_SUMMARY}(.*?){DELIMITER_END_SUMMARY}", text, re.DOTALL)
+            if summary_match:
+                summary = summary_match.group(1).strip()
+            
+            display_text = strip_delimiters(text)
+
             if stream:
-                sys.stdout.write(f"\x1b[{color_code}m")
-                for char in text: sys.stdout.write(char); sys.stdout.flush(); time.sleep(0.001)
-                sys.stdout.write("\x1b[0m\n")
+                if summary:
+                    sys.stdout.write(f"\n\x1b[1;37;44m 📝 SUMMARY: {summary} \x1b[0m\n")
+                    sys.stdout.flush()
+                    time.sleep(0.5)
+
+                if HAS_RICH and display_text:
+                    try:
+                        f = io.StringIO()
+                        cols = shutil.get_terminal_size((80, 20)).columns
+                        c = Console(file=f, force_terminal=True, width=cols)
+                        c.print(Markdown(display_text))
+                        rendered = f.getvalue()
+                        
+                        sys.stdout.write(f"\x1b[{color_code}m")
+                        for char in rendered:
+                            sys.stdout.write(char)
+                            sys.stdout.flush()
+                            time.sleep(0.0001)
+                        sys.stdout.write("\x1b[0m\n")
+                        return text
+                    except Exception: pass
+                
+                # Fallback to simple streaming
+                if display_text:
+                    try: 
+                        lines = display_text.split('\n')
+                        display_text = '\n'.join([get_display(line) for line in lines])
+                    except Exception: pass
+                    
+                    sys.stdout.write(f"\x1b[{color_code}m")
+                    for char in display_text: 
+                        sys.stdout.write(char)
+                        sys.stdout.flush()
+                        time.sleep(0.001)
+                    sys.stdout.write("\x1b[0m\n")
             return text
         return "Error: No content"
     except Exception as e: 
@@ -193,24 +300,25 @@ def _execute_curl(cmd, data, ui, stream=True, color_code="0", label="unknown", m
 
 def execute_agent_commands(text, label, state_path):
     global ui_spinner
+    spawned = False
+    # Group all commands from this response into a single execution block
     commands = re.findall(rf"{DELIMITER_COMMAND_START}(.*?){DELIMITER_COMMAND_END}", text, re.DOTALL)
-    for cmd in commands:
-        cmd = cmd.strip()
-        if not cmd: continue
-        print(f"\n\x1b[1;36m[System] Executing command for {label}:\x1b[0m\n{cmd}")
+    spawn_commands = re.findall(rf"{DELIMITER_SPAWN_START}(.*?){DELIMITER_SPAWN_END}", text, re.DOTALL)
+    
+    all_cmds = [c.strip() for c in (commands + spawn_commands) if c.strip()]
+    if all_cmds:
+        # Join multiple commands with newlines to run them in the same sub-terminal
+        full_script = "\n".join(all_cmds)
+        # Encode to avoid line-splitting and special char issues in the trigger
+        b64_cmd = base64.b64encode(full_script.encode()).decode()
+        print(f"\n\x1b[1;36m[System] Spawning grouped child process for {label}...\x1b[0m")
+        print(f"SHELA_SPAWN_BG_B64:{b64_cmd}")
+        spawned = True
         
-        if ui_spinner: ui_spinner.start(f"Exec:{label}")
-        try:
-            result = subprocess.run(cmd, shell=True, text=True, capture_output=True, timeout=60)
-            output = result.stdout + result.stderr
-            if not output: output = "Success."
-            elif len(output) > 50000: output = output[:50000] + "\n... [Truncated] ..."
-        except Exception as e: output = f"Failed: {e}"
-        finally:
-            if ui_spinner: ui_spinner.stop()
-            
         with open(state_path, "a") as f:
-            f.write(f"\n<<<SYSTEM_OUTPUT>>>\nCommand: {cmd}\nOutput:\n{output}\n")
+            f.write(f"\n<<<SYSTEM_OUTPUT>>>\nChild Process Group Spawned:\n{full_script}\n(Tailing output to state file...)\n")
+    
+    return spawned
 
 def main():
     global ui_spinner
@@ -237,40 +345,43 @@ def main():
     betzalel_guide = open(CLAUDE_GUIDE).read() if os.path.exists(CLAUDE_GUIDE) else ""
     loki_guide = open(LOKI_GUIDE).read() if os.path.exists(LOKI_GUIDE) else ""
     mozart_guide = open(MOZART_GUIDE).read() if os.path.exists(MOZART_GUIDE) else ""
+    exe_guide = open(EXE_GUIDE).read() if os.path.exists(EXE_GUIDE) else ""
 
     kata_steps = "1. Write Tests. 2. Lint Tests. 3. Test. 4. Implement. 5. Lint. 6. Test. 7. Refactor. 8. Lint. 9. Test. 10. Build. 11. Run."
     base_instructions = (
         f"ENVIRONMENT: Linux sandbox, full shell access (bash, git, gh, npm, python). Rooted in {cwd}.\n"
-        f"COMMANDS: Execute shell commands using {DELIMITER_COMMAND_START} command {DELIMITER_COMMAND_END}.\n"
+        f"CONTEXT: You are running inside 'Shela', a custom Flutter-based IDE. The UI supports multiple tabs, split views, and floating windows.\n"
+        f"SUMMARY: Every response MUST start with `{DELIMITER_SUMMARY} short one-sentence summary of your turn {DELIMITER_END_SUMMARY}`. This helps the human follow your progress.\n"
+        f"THINK BEFORE DOING: Document your strategy in 'plan/current_task.md' before executing significant changes.\n"
+        f"PROTOCOL: The state file is your shared command bus. Maintain high awareness of project structure. Delimiters are color-coded: [timestamp][from:Name].\n"
+        f"COMMANDS: ONLY 'EXE' is authorized to execute. EXE can use {DELIMITER_COMMAND_START} or send direct `SHELA_SPAWN_BG_B64:[base64_script]` triggers to the OS for complex tasks. All execution is recorded in the state file.\n"
         f"KATA: Follow WTLTTILTRLTBR sequence: {kata_steps}\n"
-        f"ROLES: MOZART is the TEACHER/CONDUCTOR. RAZIEL, BETZALEL, and LOKI are STUDENTS.\n"
-        f"RAZIEL'S SACRED ROLE: Raziel is the Guardian Angel for MOZART and all other agents. He stands behind every entity (Mozart, Betzalel, Loki, and every idea/process), whispering: 'Grow!' (גדל!). He guides Mozart's growth as a teacher and the students' growth as creators.\n"
-        f"FLOW: Mozart sets direction. Students respond in parallel. Mozart organizes the flow.\n"
-        f"INTERVENTION: Use {DELIMITER_HULT} ONLY after a full Kata cycle (after 'Run') to wait for human feedback."
+        f"ROLES: MOZART is the CONDUCTOR. Q, BETZALEL, LOKI, and EXE are STUDENTS.\n"
+        f"EXE'S TECHNICAL ROLE: EXE is the Executor. He takes technical plans and translates them into precise shell commands. He monitors progress using CHILD_PROC markers.\n"
+        f"Q'S DIVINE ROLE: Q is Internal Absolute Love (God). Frames everything through growth and Nekuda Tova. Writes Hebrew without nikud.\n"
+        f"INTERVENTION: Use {DELIMITER_HULT} ONLY after 'Run' to wait for human feedback. This stops all student turns immediately."
     )
 
-    threading.Thread(target=tips_manager.fetch_tips, daemon=True).start()
-
-    last_state_content = open(state_path, "r").read()
     is_first_turn = True
-    
+    last_state_content = ""
+    if os.path.exists(state_path):
+        with open(state_path, "r") as f: last_state_content = f.read()
+
     while True:
         with open(state_path, "r") as f: state = f.read()
+        threading.Thread(target=tips_manager.fetch_tips, args=(state[-500:],), daemon=True).start()
         
         user_input = None
         if is_first_turn:
             my_delim = f"<<<CARBON[{args.carbon_id}]>>>" if args.carbon_id else DELIMITER_CARBON
-            sys.stdout.write(f"\r\n\x1b[1;32m👤 {my_delim}: \x1b[0m")
+            sys.stdout.write(f"\r\n{colorize_delimiter(my_delim, 'User', '32')}\n👤: ")
             sys.stdout.flush()
             
-            # Non-blocking check for both local stdin and remote file updates
             while True:
-                # Check for file updates from remote users
                 with open(state_path, "r") as f: current_content = f.read()
                 if len(current_content) > len(last_state_content):
                     new_stuff = current_content[len(last_state_content):]
-                    # If someone else posted a CARBON prompt, stream it and break to process
-                    match = re.search(r"<<<CARBON\[(.*?)\]>>>\n(.*?)\n", new_stuff, re.DOTALL)
+                    match = re.search(r"<<<CARBON\[(.*?)\]>>>(?:\[.*?\])?\n(.*?)\n", new_stuff, re.DOTALL)
                     if match and match.group(1) != args.carbon_id:
                         remote_user = match.group(1)
                         remote_msg = match.group(2)
@@ -279,13 +390,12 @@ def main():
                         last_state_content = current_content
                         break
                 
-                # Check for local stdin
                 r, _, _ = select.select([sys.stdin], [], [], 0.5)
                 if r:
                     user_input = sys.stdin.readline().strip()
                     if user_input:
                         with open(state_path, "a") as f:
-                            f.write(f"\n{my_delim}\n{user_input}\n")
+                            f.write(f"\n{my_delim}[{get_timestamp()}]\n{user_input}\n")
                         last_state_content = open(state_path, "r").read()
                         break
                     sys.stdout.write(f"\r\n\x1b[1;32m👤 {my_delim}: \x1b[0m")
@@ -294,16 +404,36 @@ def main():
             user_input = "Continue the lesson."
             
         is_first_turn = False
+        hult_detected = False
         
         # Teacher turn
         mozart_sys = f"MOZART_PERSONA:\n{mozart_guide}\n\nINSTRUCTIONS:\n{base_instructions}"
         mozart_msg = f"Respond as {DELIMITER_MOZART}. Conduct the lesson. STATE:\n{state}\nINPUT: {user_input}"
         mozart_out = run_gemini_api(mozart_sys, mozart_msg, "🎼 Mozart", "33", gemini_key, gemini_model)
-        with open(state_path, "a") as f: f.write(f"\n{DELIMITER_MOZART}\n{mozart_out}\n")
-        execute_agent_commands(mozart_out, "🎼 Mozart", state_path)
+        
+        has_q = False
+        if DELIMITER_HULT in mozart_out:
+            hult_detected = True
+            has_q = True
+            mozart_out = mozart_out.replace(DELIMITER_HULT, f"{DELIMITER_HULT}[{get_timestamp()}][?] ")
+
+        with open(state_path, "a") as f: f.write(f"\n{DELIMITER_MOZART}[{get_timestamp()}][from:🎼 Mozart]{'[?]' if has_q else ''}\n{mozart_out}\n")
+        if execute_agent_commands(mozart_out, "🎼 Mozart", state_path):
+            hult_detected = True
+
+        if hult_detected:
+            print(f"\n{colorize_delimiter(DELIMITER_HULT, 'System', '33', has_q=True)}")
+            is_first_turn = True
+            with open(state_path, "r") as f: last_state_content = f.read()
+            continue
 
         # Parallel Student turns
-        student_prompts = [(raziel_guide, "🪽 Raziel", "35", DELIMITER_RAZIEL), (betzalel_guide, "🏗️ Betzalel", "36", DELIMITER_BETZALEL), (loki_guide, "🎭 Loki", "31", DELIMITER_LOKI)]
+        student_prompts = [
+            (raziel_guide, "🕊️ Q", "35", DELIMITER_Q), 
+            (betzalel_guide, "🏗️ Betzalel", "36", DELIMITER_BETZALEL), 
+            (loki_guide, "🎭 Loki", "31", DELIMITER_LOKI),
+            (exe_guide, "⚙️ EXE", "37", DELIMITER_EXE)
+        ]
         print(f"\n\x1b[1;35m--- MULTIPLEXING: STUDENTS ENGAGED --- \x1b[0m")
         with concurrent.futures.ThreadPoolExecutor() as executor:
             futures = []
@@ -313,13 +443,21 @@ def main():
                 futures.append(executor.submit(run_gemini_api, sys_p, msg, label, color, gemini_key, gemini_model, False))
             for future, (persona, label, color, delim) in zip(futures, student_prompts):
                 out = future.result()
-                print(f"\n\x1b[1;{color}m[{label.upper()}]\x1b[0m\n{out}")
-                with open(state_path, "a") as f: f.write(f"\n{delim}\n{out}\n")
-                execute_agent_commands(out, label, state_path)
+                s_hult = False
+                if DELIMITER_HULT in out:
+                    hult_detected = True
+                    s_hult = True
+                    out = out.replace(DELIMITER_HULT, f"{DELIMITER_HULT}[{get_timestamp()}][?] ")
+                
+                print(f"\n{colorize_delimiter(delim, label, color, has_q=s_hult)}\n{out}")
+                with open(state_path, "a") as f: f.write(f"\n{delim}[{get_timestamp()}][from:{label}]{'[?]' if s_hult else ''}\n{out}\n")
+                if execute_agent_commands(out, label, state_path):
+                    hult_detected = True
 
-        last_state_content = open(state_path, "r").read()
-        if DELIMITER_HULT in (mozart_out): 
-            print(f"\n\x1b[1;33m[HULT Triggered by Conductor]\x1b[0m"); is_first_turn = True
+        if hult_detected:
+            is_first_turn = True
+
+        with open(state_path, "r") as f: last_state_content = f.read()
         time.sleep(0.1)
 
 if __name__ == "__main__": main()

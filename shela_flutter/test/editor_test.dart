@@ -6,9 +6,9 @@ import 'package:shela_flutter/models.dart';
 
 void main() {
   testWidgets('EditorView toggles and scrolls', (WidgetTester tester) async {
-    final controller = TextEditingController(text: 'line 1
+    final controller = TextEditingController(text: '''line 1
 line 2
-line 3' * 100);
+line 3''' * 100);
     final doc = Document(
       filePath: 'test.dart',
       content: 'test content',

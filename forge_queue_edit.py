@@ -1,0 +1,146 @@
+import os
+
+def pour_editable_glass(filename: str):
+    html = """<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>MyShell // Errata Workspace</title>
+    <style>
+        body { margin: 0; background: #050505; color: #0f0; font-family: monospace; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+        
+        /* The Tab Bar with Carbon's Specs */
+        #tab-bar { display: flex; align-items: center; background: #111; padding: 10px; border-bottom: 2px solid #333; }
+        .tab { display: flex; align-items: center; background: #222; padding: 5px 15px; border-radius: 5px 5px 0 0; border: 1px solid #444; border-bottom: none; }
+        .cwd-label { font-size: 0.8em; color: #aaa; margin-right: 10px; font-style: italic; }
+        .tab-title { font-weight: bold; margin-right: 10px; }
+        .close-btn { color: #e74c3c; cursor: pointer; font-weight: bold; }
+
+        /* The Queue Display */
+        #command-queue { flex: 1; padding: 20px; overflow-y: auto; background: #000; }
+        .queued-item { 
+            display: flex; align-items: center; background: #111; padding: 10px 15px; 
+            margin-bottom: 8px; border-left: 3px solid #0f0; border-radius: 0 4px 4px 0;
+            transition: transform 0.1s;
+        }
+        .queued-item:hover { transform: translateX(5px); background: #151515; }
+        .command-text { flex: 1; color: #0f0; font-size: 1.1em; }
+        
+        /* The Kinetic Buttons */
+        .btn-group { display: flex; gap: 15px; }
+        .edit-btn { color: #f1c40f; cursor: pointer; font-size: 1.2em; filter: drop-shadow(0 0 2px #f1c40f); }
+        .edit-btn:hover { color: #fff; }
+        .delete-btn { color: #e74c3c; cursor: pointer; font-size: 1.2em; }
+
+        /* The Editor Manifold */
+        #editor-manifold { padding: 15px; background: #111; border-top: 2px solid #333; display: flex; }
+        .prompt-symbol { margin-right: 15px; align-self: center; color: #aaa; font-weight: bold; }
+        #prompt-editor { 
+            flex: 1; background: #000; color: #0f0; border: 1px solid #444; padding: 12px; 
+            font-family: monospace; font-size: 1.2em; outline: none; border-radius: 4px;
+        }
+        #prompt-editor:focus { border-color: #0f0; box-shadow: 0 0 10px rgba(0, 255, 0, 0.2); }
+    </style>
+</head>
+<body>
+    <div id="tab-bar">
+        <div class="tab">
+            <span class="cwd-label">[~/MyShell/src]</span>
+            <span class="tab-title">Terminal</span>
+            <span class="close-btn" title="Close Terminal">&times;</span>
+        </div>
+    </div>
+
+    <div id="command-queue">
+        <div style="color: #444; margin-bottom: 15px; font-size: 0.9em;">-- QUEUED MOVEMENTS (EDITABLE) --</div>
+        <div id="queue-list"></div>
+    </div>
+
+    <div id="editor-manifold">
+        <span class="prompt-symbol">$</span>
+        <input type="text" id="prompt-editor" placeholder="Type command and press Enter to queue...">
+    </div>
+
+    <script>
+        // Raziel's State: The Queued Scores
+        let queue = [
+            "git push origin master",
+            "fluttter builld release",
+            "npm test"
+        ];
+
+        const queueList = document.getElementById('queue-list');
+        const editor = document.getElementById('prompt-editor');
+
+        function renderQueue() {
+            queueList.innerHTML = '';
+            queue.forEach((cmd, index) => {
+                const item = document.createElement('div');
+                item.className = 'queued-item';
+                
+                const text = document.createElement('span');
+                text.className = 'command-text';
+                text.textContent = cmd;
+
+                const btns = document.createElement('div');
+                btns.className = 'btn-group';
+
+                // Carbon's Edit Icon: The Errata Trigger
+                const edit = document.createElement('span');
+                edit.className = 'edit-btn';
+                edit.innerHTML = '&#9998;'; // Pencil Icon
+                edit.title = "Recall and Edit";
+                edit.onclick = () => recallCommand(index);
+
+                // Close Icon for the specific command
+                const del = document.createElement('span');
+                del.className = 'delete-btn';
+                del.innerHTML = '&times;';
+                del.title = "Discard Command";
+                del.onclick = () => { queue.splice(index, 1); renderQueue(); };
+
+                btns.appendChild(edit);
+                btns.appendChild(del);
+                item.appendChild(text);
+                item.appendChild(btns);
+                queueList.appendChild(item);
+            });
+        }
+
+        // Raziel's Breath: Recall logic
+        function recallCommand(index) {
+            const cmd = queue[index];
+            // 1. Remove from the pending score (Wave collapse)
+            queue.splice(index, 1);
+            // 2. Re-inject into the editor manifold (Return to potentiality)
+            editor.value = cmd;
+            editor.focus();
+            // 3. Re-render the world
+            renderQueue();
+        }
+
+        editor.onkeypress = (e) => {
+            if (e.key === 'Enter' && editor.value.trim()) {
+                queue.push(editor.value);
+                editor.value = '';
+                renderQueue();
+            }
+        };
+
+        renderQueue();
+    </script>
+</body>
+</html>"""
+    with open(filename, 'w', encoding='utf-8') as f:
+        f.write(html)
+    return filename
+
+if __name__ == "__main__":
+    out = pour_editable_glass("editable_workspace.html")
+    print(f"==========================================")
+    print(f"   MOVEMENT XIII: ERRATA MANAGER FORGED   ")
+    print("==========================================")
+    print(f"-> Glass Slab Cast: {out}")
+    print(f"-> Feature: CWD and Close bound to Tab Title.")
+    print(f"-> Feature: Kinetic Edit/Recall Icon active.")
+    print("==========================================")

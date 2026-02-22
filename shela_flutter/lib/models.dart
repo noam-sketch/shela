@@ -9,18 +9,40 @@ class SearchIntent extends Intent {
   const SearchIntent();
 }
 
+class SubProcessSession {
+  final Terminal terminal;
+  final TerminalController controller;
+  final FocusNode focusNode;
+  final Pty? pty;
+  final String command;
+  final DateTime startTime;
+
+  SubProcessSession({
+    required this.terminal,
+    required this.controller,
+    required this.focusNode,
+    required this.pty,
+    required this.command,
+  }) : startTime = DateTime.now();
+}
+
 class TerminalSession {
   final Terminal terminal;
   final TerminalController controller;
+  final FocusNode focusNode;
   final Pty? pty;
   final String title;
+  String cwd;
   bool isAiOnly = false;
+  List<SubProcessSession> subProcesses = [];
 
   TerminalSession({
     required this.terminal,
     required this.controller,
+    required this.focusNode,
     required this.pty,
     required this.title,
+    this.cwd = '',
     this.isAiOnly = false,
   });
 }
