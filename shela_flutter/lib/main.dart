@@ -515,6 +515,43 @@ Shapeshifter, Catalyst, and Master of Narrative Inversion.
     }
   }
 
+  void _installTool(String tool) {
+    setState(() {
+      showBottomTerminal = true;
+    });
+    String command = '';
+    switch (tool) {
+      case 'gemini':
+        command = 'npm install -g @google/gemini-cli\n';
+        break;
+      case 'firebase':
+        command = 'npm install -g firebase-tools\n';
+        break;
+      case 'gcloud':
+        command = 'curl -sSL https://sdk.cloud.google.com | bash\n';
+        break;
+      case 'claude':
+        command = 'npm install -g @anthropic-ai/claude-code\n';
+        break;
+      case 'all':
+        command = 'echo "Installing all dependencies..." && '
+            'npm install -g @google/gemini-cli && '
+            'npm install -g firebase-tools && '
+            'npm install -g @anthropic-ai/claude-code && '
+            'echo "Installing GCloud SDK..." && '
+            'curl -sSL https://sdk.cloud.google.com | bash\n';
+        break;
+    }
+
+    if (command.isNotEmpty) {
+      if (activeSessionIndex < sessions.length && sessions[activeSessionIndex].pty != null) {
+        sessions[activeSessionIndex].pty!.write(const Utf8Encoder().convert(command));
+      } else if (bottomSessions.isNotEmpty && bottomSessions[activeBottomSessionIndex].pty != null) {
+        bottomSessions[activeBottomSessionIndex].pty!.write(const Utf8Encoder().convert(command));
+      }
+    }
+  }
+
   void _selectFile(File file) async {
     // Check if the file is already open
     final existingIndex = openDocuments.indexWhere((doc) => doc.filePath == file.path);
@@ -630,6 +667,19 @@ Shapeshifter, Catalyst, and Master of Narrative Inversion.
               actions: [
                 IconButton(icon: const Icon(Icons.cloud), tooltip: 'Cloud Integration', onPressed: () => setState(() => showCloud = !showCloud)),
                 IconButton(icon: const Icon(Icons.auto_awesome), tooltip: 'Start Duo Collaborative AI', onPressed: _runGeminiCommand),
+                PopupMenuButton<String>(
+                  icon: const Icon(Icons.build),
+                  tooltip: 'Tools',
+                  onSelected: _installTool,
+                  itemBuilder: (context) => [
+                    const PopupMenuItem(value: 'all', child: Text('Master Install All Dependencies')),
+                    const PopupMenuDivider(),
+                    const PopupMenuItem(value: 'gemini', child: Text('Install Gemini CLI')),
+                    const PopupMenuItem(value: 'claude', child: Text('Install Claude Code')),
+                    const PopupMenuItem(value: 'firebase', child: Text('Install Firebase Tools')),
+                    const PopupMenuItem(value: 'gcloud', child: Text('Install GCloud SDK')),
+                  ],
+                ),
               ],
             ),
             body: LayoutBuilder(
