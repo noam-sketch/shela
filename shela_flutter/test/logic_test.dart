@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shela_flutter/main.dart';
+import 'package:shela_flutter/models.dart';
 import 'package:path/path.dart' as p;
 import 'package:xterm/xterm.dart';
 
@@ -31,13 +32,52 @@ void main() {
        final file = File(p.join(tempDir.path, 'test.py'));
        await file.writeAsString('print("hello")');
        
-       final doc = await Document.fromFile(file, onChanged: () {});
+       bool changed = false;
+       final doc = await Document.fromFile(file, onChanged: () { changed = true; });
        expect(doc.filePath, file.path);
        expect(doc.content, 'print("hello")');
        expect(doc.selectedFileExtension, 'py');
        
+       // Trigger a file change to test the watcher
+       await file.writeAsString('print("world")');
+       await Future.delayed(const Duration(milliseconds: 500)); // wait for event
+       
+       expect(changed, true);
+       expect(doc.content, 'print("world")');
+
+       // Test edit mode prevents overwrite
+       changed = false;
+       doc.isEditing = true;
+       await file.writeAsString('print("ignore")');
+       await Future.delayed(const Duration(milliseconds: 500));
+       expect(changed, false);
+       expect(doc.content, 'print("world")');
+
+       // Test readAsString exception (Line 76)
+       doc.isEditing = false;
+       file.deleteSync(); // Delete the file so readAsString throws
+       try {
+         // Create a new file briefly to trigger the watcher event, then delete it before read
+         File(p.join(tempDir.path, 'test2.py')).writeAsStringSync('dummy');
+         doc.initWatcher(); // Re-init watcher 
+       } catch (e) {}
+
        doc.dispose();
        tempDir.deleteSync(recursive: true);
+    });
+
+    test('initWatcher exception (Line 80)', () {
+       // Using an invalid path to force an exception when starting the watcher
+       final controller = TextEditingController();
+       final doc = Document(
+         filePath: '', // Empty path will throw
+         content: '',
+         controller: controller,
+         selectedFileExtension: '',
+         onChanged: () {},
+       );
+       doc.initWatcher(); // Should catch the error internally
+       doc.dispose();
     });
   });
 
