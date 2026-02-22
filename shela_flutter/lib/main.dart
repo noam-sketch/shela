@@ -406,6 +406,10 @@ class _IdeWorkspaceState extends State<IdeWorkspace> {
     if (!await File(duoPath).exists()) {
        // Fallback for development/custom installs
        duoPath = p.join(currentDir, 'shela_flutter', 'lib', 'duo.py');
+       if (!await File(duoPath).exists()) {
+          // Absolute fallback for this specific environment
+          duoPath = '/home/noam/MyShell/shela_flutter/lib/duo.py';
+       }
     }
     final personasDir = Directory(p.join(Platform.environment['HOME'] ?? '', '.local', 'share', 'shela', 'personas'));
     if (!await personasDir.exists()) {
