@@ -119,19 +119,21 @@ def run_agent_stream(cmd_list, label, color_code, is_pty=False):
     return "".join(output)
 
 def main():
-    if not os.path.exists("plan"): os.makedirs("plan")
-    brainstorm_file = "plan/BRAINSTORM.md"
+    # Use current working directory for session files to keep them project-local
+    cwd = os.getcwd()
+    plan_dir = os.path.join(cwd, "plan")
+    if not os.path.exists(plan_dir): os.makedirs(plan_dir)
+    
+    brainstorm_file = os.path.join(plan_dir, "BRAINSTORM.md")
     if not os.path.exists(brainstorm_file):
-        with open(brainstorm_file, "w") as f: f.write("# Project Brainstorm
-")
+        with open(brainstorm_file, "w") as f: f.write("# Project Brainstorm\n")
 
-    if not os.path.exists(STATE_FILE):
-        with open(STATE_FILE, "w") as f: f.write("# Duo Session State
-")
+    state_path = os.path.join(cwd, STATE_FILE)
+    if not os.path.exists(state_path):
+        with open(state_path, "w") as f: f.write("# Duo Session State\n")
 
-    print(f"
-\x1b[1;33m[Shela Duo] Collaborative Multi-Agent Session Active.\x1b[0m")
-    print(f"\x1b[1;33mAll participants (Human, Gemini, Claude) will contribute to a shared context.\x1b[0m")
+    print(f"\n\x1b[1;33m[Shela Duo] Collaborative Multi-Agent Session Active.\x1b[0m")
+    print(f"\x1b[1;33mAll participants (Human, Gemini, Claude, Codex) will contribute to a shared context.\x1b[0m")
     
     # Load personas from external files
     gemini_persona = ""

@@ -400,7 +400,13 @@ class _IdeWorkspaceState extends State<IdeWorkspace> {
       showBottomTerminal = true;
     });
 
-    final duoPath = p.join(currentDir, 'lib', 'duo.py'); // Reference external duo.py
+    // Find duo.py relative to the executable (for release) or the current dir (for dev)
+    final exeDir = File(Platform.resolvedExecutable).parent.path;
+    String duoPath = p.join(exeDir, 'lib', 'duo.py');
+    if (!await File(duoPath).exists()) {
+       // Fallback for development/custom installs
+       duoPath = p.join(currentDir, 'shela_flutter', 'lib', 'duo.py');
+    }
     final personasDir = Directory(p.join(Platform.environment['HOME'] ?? '', '.local', 'share', 'shela', 'personas'));
     if (!await personasDir.exists()) {
       await personasDir.create(recursive: true);
