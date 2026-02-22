@@ -804,10 +804,8 @@ class _IdeWorkspaceState extends State<IdeWorkspace> {
           controller: controller,
           focusNode: focusNode,
           autofocus: focusNode != null,
+          hardwareKeyboardOnly: true,
           backgroundOpacity: 0.7,
-          onTapUp: (details, offset) {
-            focusNode?.requestFocus();
-          },
           textStyle: TerminalStyle(
             fontSize: widget.fontSize,
             fontFamily: GoogleFonts.firaCode().fontFamily ?? 'monospace',
