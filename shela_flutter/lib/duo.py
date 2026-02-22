@@ -264,8 +264,18 @@ def main():
     )
 
     while True:
+        # Reload settings mid-session to pick up live changes from Shela IDE
+        shela_settings = load_settings_from_shela()
+        active_anthropic_key = shela_settings.get("ANTHROPIC_API_KEY") or anthropic_key
+        active_gemini_key = shela_settings.get("GEMINI_API_KEY") or gemini_key
+        active_openai_key = shela_settings.get("OPENAI_API_KEY") or openai_key
+        
+        active_anthropic_model = shela_settings.get("ANTHROPIC_MODEL") or anthropic_model
+        active_gemini_model = shela_settings.get("GEMINI_MODEL") or gemini_model
+        active_openai_model = shela_settings.get("OPENAI_MODEL") or openai_model
+
         # Check if compression is needed
-        compress_state_file(state_path, betzalel_guide, base_instructions, anthropic_key, anthropic_model)
+        compress_state_file(state_path, betzalel_guide, base_instructions, active_anthropic_key, active_anthropic_model)
 
         with open(state_path, "r") as f: state = f.read()
         with open(brainstorm_file, "r") as f: plan = f.read()
@@ -285,15 +295,15 @@ def main():
 
         # Execute Raziel and Loki concurrently
         with concurrent.futures.ThreadPoolExecutor() as executor:
-            future_raziel = executor.submit(run_gemini_api, raziel_sys, raziel_msg, "Raziel", "35", gemini_key, gemini_model, False)
-            future_loki = executor.submit(run_openai_api, loki_sys, loki_msg, "Loki", "31", openai_key, openai_model, False)
+            future_raziel = executor.submit(run_gemini_api, raziel_sys, raziel_msg, "Raziel", "35", active_gemini_key, active_gemini_model, False)
+            future_loki = executor.submit(run_openai_api, loki_sys, loki_msg, "Loki", "31", active_openai_key, active_openai_model, False)
 
             raziel_out = future_raziel.result()
             loki_out = future_loki.result()
 
         # Print their outputs
-        print(f"\n\x1b[1;35m[RAZIEL ({gemini_model})]\x1b[0m\n{raziel_out}")
-        print(f"\n\x1b[1;31m[LOKI ({openai_model})]\x1b[0m\n{loki_out}")
+        print(f"\n\x1b[1;35m[RAZIEL ({active_gemini_model})]\x1b[0m\n{raziel_out}")
+        print(f"\n\x1b[1;31m[LOKI ({active_openai_model})]\x1b[0m\n{loki_out}")
 
         with open(state_path, "a") as f: 
             f.write(f"\n{DELIMITER_RAZIEL}\n{raziel_out}\n")
@@ -302,7 +312,7 @@ def main():
         # BETZALEL Turn (Synthesis)
         betzalel_sys = f"ARCHITECTURAL_GUIDE:\n{betzalel_guide}\n\nINSTRUCTIONS:\n{base_instructions}"
         betzalel_msg = f"Respond as {DELIMITER_BETZALEL}. CURRENT_STATE:\n{state}\nPLAN:\n{plan}\nRAZIEL_ANALYSIS: {raziel_out}\nLOKI_TRANSFORMATION: {loki_out}\nSYNTHESIZE BOTH INPUTS.\n"
-        betzalel_out = run_anthropic_api(betzalel_sys, betzalel_msg, "Betzalel", "36", anthropic_key, anthropic_model, True)
+        betzalel_out = run_anthropic_api(betzalel_sys, betzalel_msg, "Betzalel", "36", active_anthropic_key, active_anthropic_model, True)
         
         with open(state_path, "a") as f: f.write(f"\n{DELIMITER_BETZALEL}\n{betzalel_out}\n")
 
