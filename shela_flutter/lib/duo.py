@@ -77,7 +77,12 @@ def run_agent_stream(cmd_list, label, color_code, is_pty=False):
             while True:
                 r, w, e = select.select([fd, sys.stdin], [], [])
                 if fd in r:
-                    data = os.read(fd, 1024).decode(errors='ignore')
+                    try:
+                        data = os.read(fd, 1024).decode(errors='ignore')
+                    except OSError as e:
+                        if e.errno == 5: # EIO (Input/Output Error) - child exited
+                            break
+                        raise e
                     if not data: break
                     ui.stop()
                     sys.stdout.write(data)
@@ -181,9 +186,9 @@ def main():
 
         # Gemini's turn
         gemini_prompt = (
-            f"SYSTEM: {gemini_persona}\n"
-            f"SYSTEM: {system_instructions}\n"
-            f"SYSTEM: You are Gemini. The current state of the conversation and plan is:\n"
+            f"PERSONA: {gemini_persona}\n\n"
+            f"INSTRUCTIONS: {system_instructions}\n\n"
+            f"CONTEXT: You are Gemini. The current state of the conversation and plan is:\n"
             f"STATE:\n{state}\n"
             f"PLAN:\n{plan}\n"
             f"Your role is to contribute to the task. Respond as {DELIMITER_USER1}.\n"
@@ -196,9 +201,9 @@ def main():
 
         # Claude's turn
         claude_prompt = (
-            f"SYSTEM: {claude_persona}\n"
-            f"SYSTEM: {system_instructions}\n"
-            f"SYSTEM: You are Claude. The current state of the conversation and plan is:\n"
+            f"PERSONA: {claude_persona}\n\n"
+            f"INSTRUCTIONS: {system_instructions}\n\n"
+            f"CONTEXT: You are Claude. The current state of the conversation and plan is:\n"
             f"STATE:\n{state}\n"
             f"PLAN:\n{plan}\n"
             f"Your role is to contribute to the task. Respond as {DELIMITER_USER2}.\n"
@@ -212,9 +217,9 @@ def main():
 
         # Loki's turn
         loki_prompt = (
-            f"SYSTEM: {loki_persona}\n"
-            f"SYSTEM: {system_instructions}\n"
-            f"SYSTEM: You are Codex (Loki). The current state of the conversation and plan is:\n"
+            f"PERSONA: {loki_persona}\n\n"
+            f"INSTRUCTIONS: {system_instructions}\n\n"
+            f"CONTEXT: You are Codex (Loki). The current state of the conversation and plan is:\n"
             f"STATE:\n{state}\n"
             f"PLAN:\n{plan}\n"
             f"Your role is to contribute to the task. Respond as {DELIMITER_USER3}.\n"
