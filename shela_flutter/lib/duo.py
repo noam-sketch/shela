@@ -229,9 +229,9 @@ def compress_state_file(state_path, betzalel_guide, base_instructions, anthropic
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--anthropic-model", default=os.environ.get("ANTHROPIC_MODEL", "claude-3-5-sonnet-latest"))
-    parser.add_argument("--gemini-model", default=os.environ.get("GEMINI_MODEL", "gemini-1.5-flash"))
-    parser.add_argument("--openai-model", default=os.environ.get("OPENAI_MODEL", "gpt-4o"))
+    parser.add_argument("--anthropic-model", default=None)
+    parser.add_argument("--gemini-model", default=None)
+    parser.add_argument("--openai-model", default=None)
     parser.add_argument("--anthropic-key")
     parser.add_argument("--gemini-key")
     parser.add_argument("--openai-key")
