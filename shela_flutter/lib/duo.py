@@ -9,6 +9,7 @@ import time
 import threading
 import itertools
 import re
+import random
 
 # Communication Config
 STATE_FILE = ".shela_duo_state.md"
@@ -27,24 +28,49 @@ GEMINI_GUIDE = os.path.join(PERSONA_DIR, 'gemini.md')
 CLAUDE_GUIDE = os.path.join(PERSONA_DIR, 'claude.md')
 LOKI_GUIDE = os.path.join(PERSONA_DIR, 'loki.md')
 
+KNOWLEDGE_BASE = [
+    "Programming: Python's 'list.append()' is O(1) amortized, but 'list.insert(0, x)' is O(n).",
+    "Physics: The Speed of Light in a vacuum is exactly 299,792,458 meters per second.",
+    "Quantum: Entanglement means two particles share a single quantum state, regardless of distance.",
+    "Programming: 'Premature optimization is the root of all evil' — Donald Knuth.",
+    "Physics: Entropy in an isolated system never decreases; it only increases or remains constant.",
+    "Quantum: Schrodinger's Cat is a thought experiment about quantum superposition.",
+    "Programming: Git stores data as a series of snapshots, not just file differences.",
+    "Physics: Time dilation occurs when an object moves relative to another at high speeds.",
+    "Quantum: The Uncertainty Principle states you cannot know both position and momentum perfectly.",
+    "Programming: Rust's borrow checker ensures memory safety without a garbage collector.",
+    "Physics: Gravity is not a force, but a curvature of spacetime — General Relativity.",
+    "Quantum: Tunneling allows particles to pass through energy barriers they shouldn't be able to.",
+    "Programming: Haskell is a purely functional language with lazy evaluation.",
+    "Physics: The Big Bang was not an explosion in space, but an expansion of space itself.",
+    "Quantum: Quarks come in six 'flavors': up, down, charm, strange, top, and bottom.",
+    "Programming: Use 'Composition over Inheritance' for more flexible software design.",
+    "Physics: Black holes have a 'surface' called the event horizon from which nothing can escape.",
+    "Quantum: A Qubit can be 0, 1, or a superposition of both at the same time.",
+    "Programming: CAP Theorem: A distributed system can only provide 2 of 3: Consistency, Availability, Partition Tolerance.",
+    "Physics: The Fine-Structure Constant (approx 1/137) characterizes the strength of electromagnetic interaction.",
+]
+
 class DuoUI:
     def __init__(self):
         self.spinner = itertools.cycle(['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'])
         self.stop_spinner = threading.Event()
-        self._current_label = "Active"
+        self._current_tip = ""
         self._is_running = False
         self._spinner_thread = None
 
     def _spin(self):
         while not self.stop_spinner.is_set():
-            sys.stdout.write(f"\r\x1b[1;34m{next(self.spinner)} {self._current_label}...\x1b[0m")
+            # Clear line and print spinner + tip
+            sys.stdout.write(f"\r\x1b[1;34m{next(self.spinner)} {self._current_tip}\x1b[0m")
             sys.stdout.flush()
             time.sleep(0.1)
-        sys.stdout.write("\r" + " " * 80 + "\r")
+        sys.stdout.write("\r" + " " * 120 + "\r")
         sys.stdout.flush()
 
     def start(self, label):
-        self._current_label = label
+        # We ignore the label and pick a random tip from the knowledge base
+        self._current_tip = random.choice(KNOWLEDGE_BASE)
         if not self._is_running:
             self.stop_spinner.clear()
             self._is_running = True
@@ -52,7 +78,9 @@ class DuoUI:
             self._spinner_thread.start()
 
     def update(self, label):
-        self._current_label = label
+        # Occasionally rotate the tip even during the same stream
+        if random.random() < 0.05:
+            self._current_tip = random.choice(KNOWLEDGE_BASE)
 
     def stop(self):
         if self._is_running:
@@ -88,12 +116,7 @@ def run_agent_stream(cmd_list, label, color_code, is_pty=False):
                     sys.stdout.write(data)
                     sys.stdout.flush()
                     output.append(data)
-                    if '\n' in data:
-                        lines = data.split('\n')
-                        if len(lines) >= 2:
-                            line = lines[-2]
-                            if len(line) > 5: ui.update(f"{label}: {line[:40]}...")
-                    ui.start(f"{label} is working")
+                    ui.start(label) # Resume spinner with possibly new tip
                 if sys.stdin in r:
                     os.write(fd, os.read(sys.stdin.fileno(), 1024))
         finally:
@@ -102,7 +125,6 @@ def run_agent_stream(cmd_list, label, color_code, is_pty=False):
             except: pass
     else:
         process = subprocess.Popen(cmd_list, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
-        ui.update(f"{label} is thinking")
         while True:
             line = process.stdout.readline()
             if not line and process.poll() is not None: break
@@ -111,10 +133,7 @@ def run_agent_stream(cmd_list, label, color_code, is_pty=False):
                 sys.stdout.write(line)
                 sys.stdout.flush()
                 output.append(line)
-                clean = line.strip()
-                if clean and not clean.startswith('<'):
-                    ui.update(f"{label}: {clean[:50]}...")
-                ui.start(f"{label} is streaming")
+                ui.start(label)
         process.stdout.close()
     
     ui.stop()
