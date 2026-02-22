@@ -19,8 +19,13 @@ import shutil
 try:
     from bidi.algorithm import get_display
 except ImportError:
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "python-bidi", "--quiet"])
-    from bidi.algorithm import get_display
+    try:
+        # Try installing, suppressing the externally managed environment error if possible
+        subprocess.check_call([sys.executable, "-m", "pip", "install", "python-bidi", "--quiet", "--break-system-packages"])
+        from bidi.algorithm import get_display
+    except Exception:
+        # Fallback if installation completely fails
+        def get_display(text): return text
 
 # Communication Config
 STATE_FILE = ".shela_duo_state.md"
