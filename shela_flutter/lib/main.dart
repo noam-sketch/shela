@@ -691,7 +691,14 @@ class _IdeWorkspaceState extends State<IdeWorkspace> {
 
     // Run the external Duo orchestrator in the active terminal using absolute path
     if (activeSessionIndex < sessions.length && sessions[activeSessionIndex].pty != null) {
-      sessions[activeSessionIndex].pty!.write(const Utf8Encoder().convert('python3 "$duoPath"\n'));
+      final cmd = 'python3 "$duoPath" '
+          '--gemini-model "${widget.selectedGeminiModel}" '
+          '--anthropic-model "${widget.selectedAnthropicModel}" '
+          '--openai-model "${widget.selectedOpenaiModel}" '
+          '--gemini-key "${widget.geminiKey}" '
+          '--anthropic-key "${widget.anthropicKey}" '
+          '--openai-key "${widget.openaiKey}"\n';
+      sessions[activeSessionIndex].pty!.write(const Utf8Encoder().convert(cmd));
     }
   }
 

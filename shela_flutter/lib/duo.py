@@ -11,6 +11,7 @@ import itertools
 import re
 import random
 import json
+import argparse
 
 # Communication Config
 STATE_FILE = ".shela_duo_state.md"
@@ -30,26 +31,26 @@ CLAUDE_GUIDE = os.path.join(PERSONA_DIR, 'claude.md')
 LOKI_GUIDE = os.path.join(PERSONA_DIR, 'loki.md')
 
 KNOWLEDGE_BASE = [
-    "Programming: Python's 'list.append()' is O(1) amortized, but 'list.insert(0, x)' is O(n).",
-    "Physics: The Speed of Light in a vacuum is exactly 299,792,458 meters per second.",
-    "Quantum: Entanglement means two particles share a single quantum state, regardless of distance.",
-    "Programming: 'Premature optimization is the root of all evil' — Donald Knuth.",
-    "Physics: Entropy in an isolated system never decreases; it only increases or remains constant.",
-    "Quantum: Schrodinger's Cat is a thought experiment about quantum superposition.",
-    "Programming: Git stores data as a series of snapshots, not just file differences.",
-    "Physics: Time dilation occurs when an object moves relative to another at high speeds.",
-    "Quantum: The Uncertainty Principle states you cannot know both position and momentum perfectly.",
-    "Programming: Rust's borrow checker ensures memory safety without a garbage collector.",
-    "Physics: Gravity is not a force, but a curvature of spacetime — General Relativity.",
-    "Quantum: Tunneling allows particles to pass through energy barriers they shouldn't be able to.",
-    "Programming: Haskell is a purely functional language with lazy evaluation.",
-    "Physics: The Big Bang was not an explosion in space, but an expansion of space itself.",
-    "Quantum: Quarks come in six 'flavors': up, down, charm, strange, top, and bottom.",
-    "Programming: Use 'Composition over Inheritance' for more flexible software design.",
-    "Physics: Black holes have a 'surface' called the event horizon from which nothing can escape.",
-    "Quantum: A Qubit can be 0, 1, or a superposition of both at the same time.",
-    "Programming: CAP Theorem: A distributed system can only provide 2 of 3: Consistency, Availability, Partition Tolerance.",
-    "Physics: The Fine-Structure Constant (approx 1/137) characterizes the strength of electromagnetic interaction.",
+    "Programming: Python's 'list.append()' is O(1) amortized.",
+    "Physics: Light speed is exactly 299,792,458 m/s.",
+    "Quantum: Entanglement connects particles across space.",
+    "Programming: 'Premature optimization is the root of all evil'.",
+    "Physics: Entropy in an isolated system never decreases.",
+    "Quantum: Schrodinger's Cat is about superposition.",
+    "Programming: Git stores data as snapshots, not diffs.",
+    "Physics: Time dilation occurs at relativistic speeds.",
+    "Quantum: Uncertainty: Cannot know position and momentum.",
+    "Programming: Rust ensures memory safety without a GC.",
+    "Physics: Gravity is the curvature of spacetime.",
+    "Quantum: Tunneling lets particles pass through barriers.",
+    "Programming: Haskell uses lazy evaluation and pure functions.",
+    "Physics: The Big Bang was an expansion of space itself.",
+    "Quantum: Quarks come in six 'flavors' like Up and Down.",
+    "Programming: Favor Composition over Inheritance.",
+    "Physics: Black holes have event horizons.",
+    "Quantum: A Qubit is 0, 1, or both at once.",
+    "Programming: CAP: Consistency, Availability, Partitioning.",
+    "Physics: Fine-Structure Constant is roughly 1/137.",
 ]
 
 class DuoUI:
@@ -62,12 +63,11 @@ class DuoUI:
 
     def _spin(self):
         while not self.stop_spinner.is_set():
-            # \r to start of line, \x1b[2K to clear the whole line
-            display_tip = self._current_tip[:100]
+            # \r to start, \x1b[2K to clear line. Truncate strictly to prevent wrap.
+            display_tip = self._current_tip[:60]
             sys.stdout.write(f"\r\x1b[2K\x1b[1;34m{next(self.spinner)} {display_tip}\x1b[0m")
             sys.stdout.flush()
             time.sleep(0.1)
-        # Clear the line completely when done
         sys.stdout.write("\r\x1b[2K\r")
         sys.stdout.flush()
 
@@ -101,9 +101,7 @@ def load_keys_from_shela():
             }
     except Exception: return {}
 
-def run_anthropic_api(system_prompt, message_content, label, color_code, keys):
-    api_key = keys.get("ANTHROPIC_API_KEY")
-    model = os.environ.get("ANTHROPIC_MODEL", "claude-3-5-sonnet-latest")
+def run_anthropic_api(system_prompt, message_content, label, color_code, api_key, model):
     if not api_key: return "Error: Missing API Key"
     print(f"\n\x1b[1;{color_code}m--- {label.upper()} ({model}) --- \x1b[0m")
     ui.start(label)
@@ -116,9 +114,7 @@ def run_anthropic_api(system_prompt, message_content, label, color_code, keys):
     cmd = ["curl", "-s", "https://api.anthropic.com/v1/messages", "-H", "content-type: application/json", "-H", f"x-api-key: {api_key}", "-H", "anthropic-version: 2023-06-01", "-d", json.dumps(payload)]
     return _execute_curl(cmd, provider="anthropic")
 
-def run_gemini_api(system_prompt, message_content, label, color_code, keys):
-    api_key = keys.get("GEMINI_API_KEY")
-    model = os.environ.get("GEMINI_MODEL", "gemini-1.5-flash")
+def run_gemini_api(system_prompt, message_content, label, color_code, api_key, model):
     if not api_key: return "Error: Missing API Key"
     print(f"\n\x1b[1;{color_code}m--- {label.upper()} ({model}) --- \x1b[0m")
     ui.start(label)
@@ -127,14 +123,12 @@ def run_gemini_api(system_prompt, message_content, label, color_code, keys):
         "contents": [{"parts": [{"text": message_content}]}]
     }
     # Standardize Gemini model name (ensure it starts with models/)
-    if not model.startswith("models/"): model = f"models/{model}"
-    url = f"https://generativelanguage.googleapis.com/v1beta/{model}:generateContent?key={api_key}"
+    m_name = model if model.startswith("models/") else f"models/{model}"
+    url = f"https://generativelanguage.googleapis.com/v1beta/{m_name}:generateContent?key={api_key}"
     cmd = ["curl", "-s", "-X", "POST", url, "-H", "Content-Type: application/json", "-d", json.dumps(payload)]
     return _execute_curl(cmd, provider="google")
 
-def run_openai_api(system_prompt, message_content, label, color_code, keys):
-    api_key = keys.get("OPENAI_API_KEY")
-    model = os.environ.get("OPENAI_MODEL", "gpt-4o")
+def run_openai_api(system_prompt, message_content, label, color_code, api_key, model):
     if not api_key: return "Error: Missing API Key"
     print(f"\n\x1b[1;{color_code}m--- {label.upper()} ({model}) --- \x1b[0m")
     ui.start(label)
@@ -175,6 +169,15 @@ def _execute_curl(cmd, provider="anthropic"):
     except Exception as e: ui.stop(); return f"Error: {e}"
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--anthropic-model", default=os.environ.get("ANTHROPIC_MODEL", "claude-3-5-sonnet-latest"))
+    parser.add_argument("--gemini-model", default=os.environ.get("GEMINI_MODEL", "gemini-1.5-flash"))
+    parser.add_argument("--openai-model", default=os.environ.get("OPENAI_MODEL", "gpt-4o"))
+    parser.add_argument("--anthropic-key")
+    parser.add_argument("--gemini-key")
+    parser.add_argument("--openai-key")
+    args = parser.parse_args()
+
     cwd = os.getcwd()
     plan_dir = os.path.join(cwd, "plan")
     if not os.path.exists(plan_dir): os.makedirs(plan_dir)
@@ -185,13 +188,12 @@ def main():
     if not os.path.exists(state_path):
         with open(state_path, "w") as f: f.write("# Duo Session State\n")
 
-    current_keys = load_keys_from_shela()
-    missing = [k for k in ["ANTHROPIC_API_KEY", "GEMINI_API_KEY", "OPENAI_API_KEY"] if not current_keys.get(k)]
-    
+    shela_keys = load_keys_from_shela()
+    anthropic_key = args.anthropic_key or os.environ.get("ANTHROPIC_API_KEY") or shela_keys.get("ANTHROPIC_API_KEY")
+    gemini_key = args.gemini_key or os.environ.get("GEMINI_API_KEY") or shela_keys.get("GEMINI_API_KEY")
+    openai_key = args.openai_key or os.environ.get("OPENAI_API_KEY") or shela_keys.get("OPENAI_API_KEY")
+
     print(f"\n\x1b[1;33m[Shela Duo] Collaborative Multi-Agent Session Active.\x1b[0m")
-    if missing: print(f"\x1b[1;31mWarning: Missing keys in Shela Settings: {', '.join(missing)}\x1b[0m")
-    else: print(f"\x1b[1;32mKeys loaded successfully from Shela configuration.\x1b[0m")
-    
     print(f"\x1b[1;33mFramework: RAZIEL (Gemini) | BETZALEL (Claude) | LOKI (Codex)\x1b[0m")
 
     raziel_guide = ""
@@ -224,19 +226,19 @@ def main():
         # RAZIEL
         raziel_sys = f"STYLE_GUIDE:\n{raziel_guide}\n\nINSTRUCTIONS:\n{base_instructions}"
         raziel_msg = f"Respond as {DELIMITER_GEMINI}. CURRENT_STATE:\n{state}\nPLAN:\n{plan}\nNEW_INPUT: {user_input}\n"
-        raziel_out = run_gemini_api(raziel_sys, raziel_msg, "Raziel", "35", current_keys)
+        raziel_out = run_gemini_api(raziel_sys, raziel_msg, "Raziel", "35", gemini_key, args.gemini_model)
         with open(state_path, "a") as f: f.write(f"\n{DELIMITER_GEMINI}\n{raziel_out}\n")
 
         # BETZALEL
         betzalel_sys = f"ARCHITECTURAL_GUIDE:\n{betzalel_guide}\n\nINSTRUCTIONS:\n{base_instructions}"
         betzalel_msg = f"Respond as {DELIMITER_CLAUDE}. CURRENT_STATE:\n{state}\nPLAN:\n{plan}\nLAST_UPDATE: {raziel_out}\n"
-        betzalel_out = run_anthropic_api(betzalel_sys, betzalel_msg, "Betzalel", "36", current_keys)
+        betzalel_out = run_anthropic_api(betzalel_sys, betzalel_msg, "Betzalel", "36", anthropic_key, args.anthropic_model)
         with open(state_path, "a") as f: f.write(f"\n{DELIMITER_CLAUDE}\n{betzalel_out}\n")
 
         # LOKI
         loki_sys = f"CREATIVE_GUIDE:\n{loki_guide}\n\nINSTRUCTIONS:\n{base_instructions}"
         loki_msg = f"Respond as {DELIMITER_CODEX}. CURRENT_STATE:\n{state}\nPLAN:\n{plan}\nPREVIOUS_INPUT: {betzalel_out}\n"
-        loki_out = run_openai_api(loki_sys, loki_msg, "Loki", "31", current_keys)
+        loki_out = run_openai_api(loki_sys, loki_msg, "Loki", "31", openai_key, args.openai_model)
         with open(state_path, "a") as f: f.write(f"\n{DELIMITER_CODEX}\n{loki_out}\n")
 
         time.sleep(0.1)
