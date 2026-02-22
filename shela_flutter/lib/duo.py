@@ -302,6 +302,7 @@ def main():
     
     # Just output what we settled on for debugging/transparency
     print(f"\x1b[1;34mModels: {gemini_model} | {anthropic_model} | {openai_model}\x1b[0m")
+    print(f"\x1b[1;32mKata: WTLTTILTRLTBL (1. Write Tests | 2. Lint Tests | 3. Test | 4. Implement | 5. Lint | 6. Test | 7. Refactor | 8. Lint | 9. Test | 10. Build | 11. Loop)\x1b[0m")
 
     raziel_guide = ""
     if os.path.exists(GEMINI_GUIDE):
@@ -321,6 +322,7 @@ def main():
         f"4. Always prefix your response with your user delimiter.\n"
         f"5. The human user is identified by the delimiter {DELIMITER_CARBON}.\n"
         f"6. To execute bash commands (e.g. interacting with the OS or filesystem), wrap the exact command within {DELIMITER_COMMAND_START} and {DELIMITER_COMMAND_END}. The system will run it and append the output to the state.\n"
+        f"7. Here we practice the WTLTTILTRLTBL Kata: 1. Write Tests. 2. Lint Tests. 3. Test. 4. Implement. 5. Lint. 6. Test. 7. Refactor. 8. Lint. 9. Test. 10. Build. 11. Loop.\n"
     )
 
     while True:
