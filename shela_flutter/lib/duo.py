@@ -87,7 +87,9 @@ ui = DuoUI()
 
 def run_anthropic_api(system_prompt, message_content, label, color_code):
     api_key = os.environ.get("ANTHROPIC_API_KEY")
-    if not api_key: return f"Error: Missing ANTHROPIC_API_KEY"
+    if not api_key:
+        print(f"\n\x1b[1;31m[Error] {label}: ANTHROPIC_API_KEY not found.\x1b[0m")
+        return "Error: Missing API Key"
     print(f"\n\x1b[1;{color_code}m--- {label.upper()} (Anthropic API) --- \x1b[0m")
     ui.start(label)
     payload = {
@@ -101,7 +103,9 @@ def run_anthropic_api(system_prompt, message_content, label, color_code):
 
 def run_gemini_api(system_prompt, message_content, label, color_code):
     api_key = os.environ.get("GEMINI_API_KEY")
-    if not api_key: return f"Error: Missing GEMINI_API_KEY"
+    if not api_key:
+        print(f"\n\x1b[1;31m[Error] {label}: GEMINI_API_KEY not found.\x1b[0m")
+        return "Error: Missing API Key"
     print(f"\n\x1b[1;{color_code}m--- {label.upper()} (Gemini API) --- \x1b[0m")
     ui.start(label)
     payload = {
@@ -114,7 +118,9 @@ def run_gemini_api(system_prompt, message_content, label, color_code):
 
 def run_openai_api(system_prompt, message_content, label, color_code):
     api_key = os.environ.get("OPENAI_API_KEY")
-    if not api_key: return f"Error: Missing OPENAI_API_KEY"
+    if not api_key:
+        print(f"\n\x1b[1;31m[Error] {label}: OPENAI_API_KEY not found.\x1b[0m")
+        return "Error: Missing API Key"
     print(f"\n\x1b[1;{color_code}m--- {label.upper()} (OpenAI API) --- \x1b[0m")
     ui.start(label)
     payload = {
@@ -132,18 +138,37 @@ def _execute_curl(cmd, provider="anthropic"):
         process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         stdout, stderr = process.communicate()
         ui.stop()
-        if process.returncode != 0: return f"Error: {stderr}"
-        res = json.loads(stdout)
-        if provider == "anthropic": text = res["content"][0]["text"]
-        elif provider == "google": text = res["candidates"][0]["content"]["parts"][0]["text"]
-        elif provider == "openai": text = res["choices"][0]["message"]["content"]
+        if process.returncode != 0:
+            print(f"\x1b[1;31mCurl process failed: {stderr}\x1b[0m")
+            return f"Error: {stderr}"
         
-        for char in text:
-            sys.stdout.write(char); sys.stdout.flush(); time.sleep(0.001)
-        print()
-        return text
+        try:
+            res = json.loads(stdout)
+        except json.JSONDecodeError:
+            print(f"\x1b[1;31mFailed to parse API response: {stdout}\x1b[0m")
+            return "Error: Invalid JSON response"
+
+        text = ""
+        if provider == "anthropic":
+            if "content" in res: text = res["content"][0]["text"]
+            else: print(f"\x1b[1;31mAnthropic API Error: {res}\x1b[0m")
+        elif provider == "google":
+            if "candidates" in res: text = res["candidates"][0]["content"]["parts"][0]["text"]
+            else: print(f"\x1b[1;31mGemini API Error: {res}\x1b[0m")
+        elif provider == "openai":
+            if "choices" in res: text = res["choices"][0]["message"]["content"]
+            else: print(f"\x1b[1;31mOpenAI API Error: {res}\x1b[0m")
+        
+        if text:
+            for char in text:
+                sys.stdout.write(char); sys.stdout.flush(); time.sleep(0.001)
+            print()
+            return text
+        return "Error: No content returned"
     except Exception as e:
-        ui.stop(); return f"Error: {e}"
+        ui.stop()
+        print(f"\x1b[1;31mException: {e}\x1b[0m")
+        return f"Error: {e}"
 
 def main():
     cwd = os.getcwd()
@@ -156,6 +181,21 @@ def main():
     if not os.path.exists(state_path):
         with open(state_path, "w") as f: f.write("# Duo Session State\n")
 
+    # API Key check
+    keys = {
+        "ANTHROPIC_API_KEY": os.environ.get("ANTHROPIC_API_KEY"),
+        "GEMINI_API_KEY": os.environ.get("GEMINI_API_KEY"),
+        "OPENAI_API_KEY": os.environ.get("OPENAI_API_KEY")
+    }
+    missing = [k for k, v in keys.items() if not v]
+    
+    print(f"\n\x1b[1;33m[Shela Duo] Collaborative Multi-Agent Session Active.\x1b[0m")
+    if missing:
+        print(f"\x1b[1;31mWarning: Missing keys in environment: {', '.join(missing)}\x1b[0m")
+        print(f"\x1b[1;33mEnsure you launch Duo from within Shela or export your keys manually.\x1b[0m")
+    
+    print(f"\x1b[1;33mFramework: RAZIEL (Gemini) | BETZALEL (Claude) | LOKI (Codex)\x1b[0m")
+
     def load_guide(path, label):
         if os.path.exists(path):
             with open(path, "r") as f: return f.read()
@@ -164,9 +204,6 @@ def main():
     raziel_guide = load_guide(GEMINI_GUIDE, "Raziel")
     betzalel_guide = load_guide(CLAUDE_GUIDE, "Betzalel")
     loki_guide = load_guide(LOKI_GUIDE, "Loki")
-
-    print(f"\n\x1b[1;33m[Shela Duo] Collaborative Multi-Agent Session Active.\x1b[0m")
-    print(f"\x1b[1;33mFramework: RAZIEL (Gemini) | BETZALEL (Claude) | LOKI (Codex)\x1b[0m")
 
     base_instructions = (
         f"You are part of a multi-agent social-production circle. Adhere to these protocols:\n"
