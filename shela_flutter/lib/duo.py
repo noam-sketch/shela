@@ -77,13 +77,21 @@ class DuoUI:
         self._lock = threading.Lock()
 
     def _spin(self):
+        tick_count = 0
         while not self.stop_spinner.is_set():
+            if tick_count % 30 == 0:  # Rotate tip every 3 seconds (30 ticks)
+                with self._lock:
+                    self._current_tip = random.choice(KNOWLEDGE_BASE)
+            
             cols = shutil.get_terminal_size((80, 20)).columns
             max_len = max(10, cols - 15)
-            display_tip = self._current_tip[:max_len]
+            with self._lock:
+                display_tip = self._current_tip[:max_len]
+                
             sys.stdout.write(f"\r\x1b[2K\x1b[1;34m{next(self.spinner)} {display_tip}\x1b[0m")
             sys.stdout.flush()
             time.sleep(0.1)
+            tick_count += 1
         sys.stdout.write("\r\x1b[2K\r")
         sys.stdout.flush()
 
