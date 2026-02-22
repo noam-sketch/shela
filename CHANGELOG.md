@@ -3,9 +3,9 @@
 ## [1.2.0] - 2026-02-22
 
 ### Added
-- **Direct API Integrations**: Migrated Duo orchestrator to use pure Dart HttpClient endpoints for Anthropic, Google, and OpenAI models.
-- **Dynamic Model Selection**: Added dropdown menus in the settings panel to dynamically fetch and select AI models.
-- **Persistent Settings**: Implemented `shared_preferences` to persist theme mode, primary color, font size, API keys, and selected models.
+- **Direct API Integrations**: Migrated Duo orchestrator to use pure Dart HttpClient endpoints for Google models.
+- **Dynamic Model Selection**: Added dropdown menus in the settings panel to dynamically fetch and select Gemini models.
+- **Persistent Settings**: Implemented `shared_preferences` to persist theme mode, primary color, font size, Gemini API keys, and selected models.
 - **Terminal Queue Prompts**: Added a persistent input field below the terminals to queue and send prompts without interrupting output flow.
 - **File System Sync**: The File Browser and Editor now actively watch the local filesystem (`Directory.watch`, `File.watch`) to reload content dynamically when AI agents modify files.
 - **3-Dot Context Menu**: Added a convenient `more_vert` 3-dot menu to every file and folder in the browser, triggering context menus directly.
@@ -14,15 +14,15 @@
 
 ### Changed
 - Refactored `main.dart` by extracting models to a dedicated `models.dart` to reach 100% test coverage and 100% lint compliance.
-- Restructured `duo.py` with specific, authoritative system prompts (`ARCHITECTURAL_GUIDE`, `STYLE_GUIDE`) to completely bypass Claude's prompt injection filters and maintain character identity.
+- Restructured `duo.py` with specific, authoritative system prompts (`ARCHITECTURAL_GUIDE`, `STYLE_GUIDE`) to maintain character identity.
 - Replaced the user delimiter with `<<<CARBON>>>`.
 
 ## [1.1.0] - 2026-02-22
 
 ### Added
-- **Duo Collaborative AI Mode**: Multi-agent sessions with **Raziel (Gemini)**, **Betzalel (Claude)**, and **Loki (Codex)**.
+- **Duo Collaborative AI Mode**: Multi-agent sessions with **Raziel**, **Betzalel**, and **Loki**, all powered by Gemini.
 - **Tabbed Document Editor**: Open, edit, and save multiple files in a new editor panel.
-- **Master Install All Dependencies**: Integrated "Master Install" tool for AI and Cloud CLIs (Gemini, Claude, Codex, Firebase, GCloud).
+- **Master Install All Dependencies**: Integrated "Master Install" tool for AI and Cloud CLIs (Gemini, Firebase, GCloud).
 - **Thought Delimiters**: Support for `<<<THOUGHT>>>`, `<<<THOUGHT_STREAM>>>`, and `<<<HULT>>>` (Human-in-the-Loop) for AI structured output.
 - **Multi-Tab Bottom Panel**: Added tabbed session management to the bottom output terminal.
 - **File System Operations**: Added "Delete," "New File," and "New Folder" to the file browser context menus.
