@@ -16,6 +16,12 @@ import concurrent.futures
 
 import shutil
 
+try:
+    from bidi.algorithm import get_display
+except ImportError:
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "python-bidi", "--quiet"])
+    from bidi.algorithm import get_display
+
 # Communication Config
 STATE_FILE = ".shela_duo_state.md"
 DELIMITER_CARBON = "<<<CARBON>>>"
@@ -126,7 +132,7 @@ def run_anthropic_api(system_prompt, message_content, label, color_code, api_key
         "messages": [{"role": "user", "content": message_content}]
     }
     cmd = ["curl", "-s", "https://api.anthropic.com/v1/messages", "-H", "content-type: application/json", "-H", f"x-api-key: {api_key}", "-H", "anthropic-version: 2023-06-01", "-d", json.dumps(payload)]
-    return _execute_curl(cmd, provider="anthropic", stream=stream)
+    return _execute_curl(cmd, provider="anthropic", stream=stream, color_code=color_code)
 
 def run_gemini_api(system_prompt, message_content, label, color_code, api_key, model, stream=True):
     api_key = api_key.strip() if api_key else ""
@@ -142,7 +148,7 @@ def run_gemini_api(system_prompt, message_content, label, color_code, api_key, m
     m_name = model if model.startswith("models/") else f"models/{model}"
     url = f"https://generativelanguage.googleapis.com/v1beta/{m_name}:generateContent?key={api_key}"
     cmd = ["curl", "-s", "-X", "POST", url, "-H", "Content-Type: application/json", "-d", json.dumps(payload)]
-    return _execute_curl(cmd, provider="google", stream=stream)
+    return _execute_curl(cmd, provider="google", stream=stream, color_code=color_code)
 
 def run_openai_api(system_prompt, message_content, label, color_code, api_key, model, stream=True):
     api_key = api_key.strip() if api_key else ""
@@ -159,9 +165,9 @@ def run_openai_api(system_prompt, message_content, label, color_code, api_key, m
         ]
     }
     cmd = ["curl", "-s", "https://api.openai.com/v1/chat/completions", "-H", "Content-Type: application/json", "-H", f"Authorization: Bearer {api_key}", "-d", json.dumps(payload)]
-    return _execute_curl(cmd, provider="openai", stream=stream)
+    return _execute_curl(cmd, provider="openai", stream=stream, color_code=color_code)
 
-def _execute_curl(cmd, provider="anthropic", stream=True):
+def _execute_curl(cmd, provider="anthropic", stream=True, color_code="0"):
     try:
         process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         stdout, stderr = process.communicate()
@@ -182,9 +188,17 @@ def _execute_curl(cmd, provider="anthropic", stream=True):
             else: print(f"\x1b[1;31mOpenAI Error: {res.get('error', res)}\x1b[0m")
         
         if text:
+            try:
+                # Apply bidi display line-by-line to preserve structure
+                lines = text.split('\n')
+                text = '\n'.join([get_display(line) for line in lines])
+            except NameError:
+                pass
+            
             if stream:
+                sys.stdout.write(f"\x1b[{color_code}m")
                 for char in text: sys.stdout.write(char); sys.stdout.flush(); time.sleep(0.001)
-                print()
+                sys.stdout.write("\x1b[0m\n")
             return text
         return "Error: No content returned"
     except Exception as e: ui.stop(); return f"Error: {e}"

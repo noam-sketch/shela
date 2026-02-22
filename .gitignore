@@ -14,3 +14,4 @@
 shela-linux-x64.tar.gz
 .env
 node_modules/
+client_secret_*.json
