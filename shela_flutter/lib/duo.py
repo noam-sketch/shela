@@ -10,6 +10,7 @@ import threading
 import itertools
 import re
 import random
+import json
 
 # Communication Config
 STATE_FILE = ".shela_duo_state.md"
@@ -90,6 +91,59 @@ class DuoUI:
             self._is_running = False
 
 ui = DuoUI()
+
+def run_anthropic_api(system_prompt, message_content, label, color_code):
+    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    if not api_key:
+        print(f"\n\x1b[1;31mError: ANTHROPIC_API_KEY not found in environment.\x1b[0m")
+        return "Error: Missing API Key"
+
+    print(f"\n\x1b[1;{color_code}m--- {label.upper()} (API) --- \x1b[0m")
+    ui.start(f"{label} is connecting to Anthropic")
+
+    payload = {
+        "model": "claude-3-5-sonnet-20241022",
+        "max_tokens": 4096,
+        "system": system_prompt,
+        "messages": [
+            {"role": "user", "content": message_content}
+        ]
+    }
+
+    cmd = [
+        "curl", "-s", "https://api.anthropic.com/v1/messages",
+        "-H", "content-type: application/json",
+        "-H", f"x-api-key: {api_key}",
+        "-H", "anthropic-version: 2023-06-01",
+        "-d", json.dumps(payload)
+    ]
+
+    try:
+        process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        stdout, stderr = process.communicate()
+        ui.stop()
+
+        if process.returncode != 0:
+            print(f"\x1b[1;31mCurl Error: {stderr}\x1b[0m")
+            return f"Error: API Request failed"
+
+        response = json.loads(stdout)
+        if "content" in response:
+            text = response["content"][0]["text"]
+            # Stream the text to console for the user to see
+            for char in text:
+                sys.stdout.write(char)
+                sys.stdout.flush()
+                time.sleep(0.001)
+            print()
+            return text
+        else:
+            print(f"\x1b[1;31mAPI Error: {json.dumps(response, indent=2)}\x1b[0m")
+            return "Error: Unexpected API response structure"
+    except Exception as e:
+        ui.stop()
+        print(f"\x1b[1;31mException during API call: {e}\x1b[0m")
+        return f"Error: {e}"
 
 def run_agent_stream(cmd_list, label, color_code, is_pty=False):
     print(f"\n\x1b[1;{color_code}m--- {label.upper()} --- \x1b[0m")
@@ -189,15 +243,13 @@ def main():
         raziel_out = run_agent_stream(["gemini", "-p", raziel_prompt, "-o", "text"], "Raziel", "35")
         with open(state_path, "a") as f: f.write(f"\n{DELIMITER_GEMINI}\n{raziel_out}\n")
 
-        # BETZALEL Turn
-        betzalel_prompt = (
-            f"ARCHITECTURAL_GUIDE: {betzalel_guide}\n\n"
-            f"INSTRUCTIONS: {base_instructions}\n"
+        # BETZALEL Turn (Direct API)
+        betzalel_sys = f"ARCHITECTURAL_GUIDE: {betzalel_guide}\n\nINSTRUCTIONS: {base_instructions}"
+        betzalel_msg = (
             f"Respond as {DELIMITER_CLAUDE}. Task: Review structure and suggest changes.\n"
             f"CURRENT_STATE:\n{state}\nPLAN:\n{plan}\nLAST_UPDATE: {raziel_out}\n"
         )
-        betzalel_cmd = ["npx", "-y", "@anthropic-ai/claude-code", "--continue", "--print", betzalel_prompt]
-        betzalel_out = run_agent_stream(betzalel_cmd, "Betzalel", "36", is_pty=True)
+        betzalel_out = run_anthropic_api(betzalel_sys, betzalel_msg, "Betzalel", "36")
         with open(state_path, "a") as f: f.write(f"\n{DELIMITER_CLAUDE}\n{betzalel_out}\n")
 
         # LOKI Turn
