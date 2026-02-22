@@ -37,6 +37,8 @@ DELIMITER_TERMINATE = "<<<TERMINATE>>>"
 DELIMITER_THOUGHT = "<<<THOUGHT>>>"
 DELIMITER_THOUGHT_STREAM = "<<<THOUGHT_STREAM>>>"
 DELIMITER_HULT = "<<<HULT>>>"
+DELIMITER_COMMAND_START = "<<<COMMAND>>>"
+DELIMITER_COMMAND_END = "<<<END_COMMAND>>>"
 
 # Persona file paths (created by Shela IDE)
 PERSONA_DIR = os.path.join(os.path.expanduser('~'), '.local', 'share', 'shela', 'personas')
@@ -235,6 +237,27 @@ def compress_state_file(state_path, betzalel_guide, base_instructions, anthropic
         else:
             print(f"\x1b[1;31m[System] State compression failed: {compressed}\x1b[0m")
 
+def execute_agent_commands(text, label, state_path):
+    commands = re.findall(rf"{DELIMITER_COMMAND_START}(.*?){DELIMITER_COMMAND_END}", text, re.DOTALL)
+    system_log = ""
+    for cmd in commands:
+        cmd = cmd.strip()
+        if not cmd: continue
+        print(f"\n\x1b[1;36m[System] Executing command for {label}:\x1b[0m\n{cmd}")
+        try:
+            result = subprocess.run(cmd, shell=True, text=True, capture_output=True, timeout=60)
+            output = result.stdout + result.stderr
+            if not output: output = "Command executed successfully with no output."
+        except Exception as e:
+            output = f"Command execution failed: {e}"
+        
+        entry = f"\n<<<SYSTEM_OUTPUT>>>\nCommand: {cmd}\nOutput:\n{output}\n"
+        with open(state_path, "a") as f:
+            f.write(entry)
+        system_log += entry
+        print(f"\x1b[1;32m[System] Command output appended to state.\x1b[0m")
+    return system_log
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--anthropic-model", default=None)
@@ -297,6 +320,7 @@ def main():
         f"3. Use {DELIMITER_HULT} to request human intervention.\n"
         f"4. Always prefix your response with your user delimiter.\n"
         f"5. The human user is identified by the delimiter {DELIMITER_CARBON}.\n"
+        f"6. To execute bash commands (e.g. interacting with the OS or filesystem), wrap the exact command within {DELIMITER_COMMAND_START} and {DELIMITER_COMMAND_END}. The system will run it and append the output to the state.\n"
     )
 
     while True:
@@ -345,12 +369,19 @@ def main():
             f.write(f"\n{DELIMITER_RAZIEL}\n{raziel_out}\n")
             f.write(f"\n{DELIMITER_LOKI}\n{loki_out}\n")
 
+        # Execute any shell commands output by Raziel and Loki
+        sys_out_raziel = execute_agent_commands(raziel_out, "Raziel", state_path)
+        sys_out_loki = execute_agent_commands(loki_out, "Loki", state_path)
+
         # BETZALEL Turn (Synthesis)
         betzalel_sys = f"ARCHITECTURAL_GUIDE:\n{betzalel_guide}\n\nINSTRUCTIONS:\n{base_instructions}"
-        betzalel_msg = f"Respond as {DELIMITER_BETZALEL}. CURRENT_STATE:\n{state}\nPLAN:\n{plan}\nRAZIEL_ANALYSIS: {raziel_out}\nLOKI_TRANSFORMATION: {loki_out}\nSYNTHESIZE BOTH INPUTS.\n"
+        betzalel_msg = f"Respond as {DELIMITER_BETZALEL}. CURRENT_STATE:\n{state}\nPLAN:\n{plan}\nRAZIEL_ANALYSIS: {raziel_out}{sys_out_raziel}\nLOKI_TRANSFORMATION: {loki_out}{sys_out_loki}\nSYNTHESIZE BOTH INPUTS.\n"
         betzalel_out = run_anthropic_api(betzalel_sys, betzalel_msg, "Betzalel", "36", active_anthropic_key, active_anthropic_model, True)
         
         with open(state_path, "a") as f: f.write(f"\n{DELIMITER_BETZALEL}\n{betzalel_out}\n")
+        
+        # Execute any shell commands output by Betzalel
+        execute_agent_commands(betzalel_out, "Betzalel", state_path)
 
         time.sleep(0.1)
 
