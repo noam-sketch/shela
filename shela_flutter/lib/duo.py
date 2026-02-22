@@ -244,29 +244,57 @@ def main():
         f"COMMANDS: Execute shell commands using {DELIMITER_COMMAND_START} command {DELIMITER_COMMAND_END}.\n"
         f"KATA: Follow WTLTTILTRLTBR sequence: {kata_steps}\n"
         f"ROLES: MOZART is the TEACHER/CONDUCTOR. RAZIEL, BETZALEL, and LOKI are STUDENTS.\n"
-        f"RAZIEL'S SACRED ROLE: Raziel is an Angel. Every 'weed' (student/process/idea) has a guardian angel (Raziel) telling it to 'Grow!'.\n"
+        f"RAZIEL'S SACRED ROLE: Raziel is the Guardian Angel for MOZART and all other agents. He stands behind every entity (Mozart, Betzalel, Loki, and every idea/process), whispering: 'Grow!' (גדל!). He guides Mozart's growth as a teacher and the students' growth as creators.\n"
         f"FLOW: Mozart sets direction. Students respond in parallel. Mozart organizes the flow.\n"
         f"INTERVENTION: Use {DELIMITER_HULT} ONLY after a full Kata cycle (after 'Run') to wait for human feedback."
     )
 
     threading.Thread(target=tips_manager.fetch_tips, daemon=True).start()
 
+    last_state_content = open(state_path, "r").read()
     is_first_turn = True
+    
     while True:
         with open(state_path, "r") as f: state = f.read()
         
+        user_input = None
         if is_first_turn:
-            delim = f"<<<CARBON[{args.carbon_id}]>>>" if args.carbon_id else DELIMITER_CARBON
-            sys.stdout.write(f"\r\n\x1b[1;32m👤 {delim}: \x1b[0m")
+            my_delim = f"<<<CARBON[{args.carbon_id}]>>>" if args.carbon_id else DELIMITER_CARBON
+            sys.stdout.write(f"\r\n\x1b[1;32m👤 {my_delim}: \x1b[0m")
             sys.stdout.flush()
-            user_input = sys.stdin.readline().strip()
-            if not user_input: continue
-        else: user_input = "Continue the lesson."
+            
+            # Non-blocking check for both local stdin and remote file updates
+            while True:
+                # Check for file updates from remote users
+                with open(state_path, "r") as f: current_content = f.read()
+                if len(current_content) > len(last_state_content):
+                    new_stuff = current_content[len(last_state_content):]
+                    # If someone else posted a CARBON prompt, stream it and break to process
+                    match = re.search(r"<<<CARBON\[(.*?)\]>>>\n(.*?)\n", new_stuff, re.DOTALL)
+                    if match and match.group(1) != args.carbon_id:
+                        remote_user = match.group(1)
+                        remote_msg = match.group(2)
+                        print(f"\n\x1b[1;36m[Remote Prompt from {remote_user}]:\x1b[0m\n{remote_msg}")
+                        user_input = remote_msg
+                        last_state_content = current_content
+                        break
+                
+                # Check for local stdin
+                r, _, _ = select.select([sys.stdin], [], [], 0.5)
+                if r:
+                    user_input = sys.stdin.readline().strip()
+                    if user_input:
+                        with open(state_path, "a") as f:
+                            f.write(f"\n{my_delim}\n{user_input}\n")
+                        last_state_content = open(state_path, "r").read()
+                        break
+                    sys.stdout.write(f"\r\n\x1b[1;32m👤 {my_delim}: \x1b[0m")
+                    sys.stdout.flush()
+        else:
+            user_input = "Continue the lesson."
             
         is_first_turn = False
-        delim_to_log = f"<<<CARBON[{args.carbon_id}]>>>" if args.carbon_id else DELIMITER_CARBON
-        with open(state_path, "a") as f: f.write(f"\n{delim_to_log}\n{user_input}\n")
-
+        
         # Teacher turn
         mozart_sys = f"MOZART_PERSONA:\n{mozart_guide}\n\nINSTRUCTIONS:\n{base_instructions}"
         mozart_msg = f"Respond as {DELIMITER_MOZART}. Conduct the lesson. STATE:\n{state}\nINPUT: {user_input}"
@@ -289,6 +317,7 @@ def main():
                 with open(state_path, "a") as f: f.write(f"\n{delim}\n{out}\n")
                 execute_agent_commands(out, label, state_path)
 
+        last_state_content = open(state_path, "r").read()
         if DELIMITER_HULT in (mozart_out): 
             print(f"\n\x1b[1;33m[HULT Triggered by Conductor]\x1b[0m"); is_first_turn = True
         time.sleep(0.1)

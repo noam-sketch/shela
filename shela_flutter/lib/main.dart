@@ -18,6 +18,7 @@ import 'package:flutter_highlight/themes/dracula.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:window_manager/window_manager.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 
 void main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -43,6 +44,7 @@ class _ShelaAppState extends State<ShelaApp> {
   List<String> _geminiModels = [];
   String _carbonEmail = '';
   String _collaborators = '';
+  String _googleClientId = '';
 
   @override
   void initState() { super.initState(); _loadSettings(); }
@@ -55,6 +57,7 @@ class _ShelaAppState extends State<ShelaApp> {
       _selectedGeminiModel = prefs.getString('selectedGeminiModel') ?? 'models/gemini-1.5-flash';
       _carbonEmail = prefs.getString('carbonEmail') ?? '';
       _collaborators = prefs.getString('collaborators') ?? '';
+      _googleClientId = prefs.getString('googleClientId') ?? '';
     });
     if (_geminiKey.isNotEmpty) _fetchGeminiModels();
   }
@@ -62,6 +65,7 @@ class _ShelaAppState extends State<ShelaApp> {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('themeName', _currentThemeName); await prefs.setDouble('globalFontSize', _globalFontSize); await prefs.setString('geminiKey', _geminiKey); await prefs.setString('selectedGeminiModel', _selectedGeminiModel);
     await prefs.setString('carbonEmail', _carbonEmail); await prefs.setString('collaborators', _collaborators);
+    await prefs.setString('googleClientId', _googleClientId);
   }
   Future<void> _fetchGeminiModels() async {
     try {
@@ -72,10 +76,18 @@ class _ShelaAppState extends State<ShelaApp> {
         if (mounted) setState(() { _geminiModels = (data['models'] as List).map((m) => m['name'] as String).where((n) => n.contains('gemini')).toList(); });
       }
       client.close();
-    } catch (e) { debugPrint('Error fetching models: $e'); }
+    } catch (e) { debugPrint('Error: $e'); }
   }
-  void _updateSettings({String? themeName, double? fontSize, String? geminiKey, String? geminiModel, String? carbonEmail, String? collaborators}) {
-    setState(() { if (themeName != null) _currentThemeName = themeName; if (fontSize != null) _globalFontSize = fontSize; if (geminiKey != null) { _geminiKey = geminiKey; _fetchGeminiModels(); } if (geminiModel != null) _selectedGeminiModel = geminiModel; if (carbonEmail != null) _carbonEmail = carbonEmail; if (collaborators != null) _collaborators = collaborators; });
+  void _updateSettings({String? themeName, double? fontSize, String? geminiKey, String? geminiModel, String? carbonEmail, String? collaborators, String? googleClientId}) {
+    setState(() { 
+      if (themeName != null) _currentThemeName = themeName; 
+      if (fontSize != null) _globalFontSize = fontSize; 
+      if (geminiKey != null) { _geminiKey = geminiKey; _fetchGeminiModels(); } 
+      if (geminiModel != null) _selectedGeminiModel = geminiModel;
+      if (carbonEmail != null) _carbonEmail = carbonEmail;
+      if (collaborators != null) _collaborators = collaborators;
+      if (googleClientId != null) _googleClientId = googleClientId;
+    });
     _saveSettings();
   }
   @override
@@ -84,7 +96,7 @@ class _ShelaAppState extends State<ShelaApp> {
     return MaterialApp(
       title: 'Shela IDE', debugShowCheckedModeBanner: false,
       theme: theme.copyWith(textTheme: GoogleFonts.heeboTextTheme(theme.textTheme)),
-      home: IdeWorkspace(initialDir: widget.initialDir, geminiKey: _geminiKey, selectedGeminiModel: _selectedGeminiModel, geminiModels: _geminiModels, fontSize: _globalFontSize, currentThemeName: _currentThemeName, carbonEmail: _carbonEmail, collaborators: _collaborators, onSettingsChanged: _updateSettings),
+      home: IdeWorkspace(initialDir: widget.initialDir, geminiKey: _geminiKey, selectedGeminiModel: _selectedGeminiModel, geminiModels: _geminiModels, fontSize: _globalFontSize, currentThemeName: _currentThemeName, carbonEmail: _carbonEmail, collaborators: _collaborators, googleClientId: _googleClientId, onSettingsChanged: _updateSettings),
     );
   }
 }
@@ -98,8 +110,9 @@ class IdeWorkspace extends StatefulWidget {
   final String currentThemeName;
   final String carbonEmail;
   final String collaborators;
-  final Function({String? themeName, double? fontSize, String? geminiKey, String? geminiModel, String? carbonEmail, String? collaborators}) onSettingsChanged;
-  const IdeWorkspace({super.key, this.initialDir, required this.geminiKey, required this.selectedGeminiModel, required this.geminiModels, required this.fontSize, required this.currentThemeName, required this.carbonEmail, required this.collaborators, required this.onSettingsChanged});
+  final String googleClientId;
+  final Function({String? themeName, double? fontSize, String? geminiKey, String? geminiModel, String? carbonEmail, String? collaborators, String? googleClientId}) onSettingsChanged;
+  const IdeWorkspace({super.key, this.initialDir, required this.geminiKey, required this.selectedGeminiModel, required this.geminiModels, required this.fontSize, required this.currentThemeName, required this.carbonEmail, required this.collaborators, required this.googleClientId, required this.onSettingsChanged});
   @override
   State<IdeWorkspace> createState() => _IdeWorkspaceState();
 }
@@ -112,7 +125,7 @@ class _IdeWorkspaceState extends State<IdeWorkspace> with TickerProviderStateMix
   List<Document> openDocuments = [];
   int activeDocumentIndex = -1;
   late String currentDir;
-  bool showCloud = false;
+  bool showCloud = true;
   double _horizontalSplit = 0.6;
   double _leftVerticalSplit = 0.7;
   double _rightVerticalSplit = 0.5;
@@ -121,6 +134,7 @@ class _IdeWorkspaceState extends State<IdeWorkspace> with TickerProviderStateMix
   final TextEditingController _promptController = TextEditingController();
   final List<String> _promptBuffer = [];
   String _activeTerminalCwd = '';
+  GoogleSignIn? _googleSignIn;
 
   @override
   void initState() {
@@ -145,12 +159,19 @@ class _IdeWorkspaceState extends State<IdeWorkspace> with TickerProviderStateMix
   void _startTelemetryTimer() {
     _telemetryTimer = Timer.periodic(const Duration(milliseconds: 500), (timer) async {
       try {
-        final file = File(p.join(currentDir, 'usage.json'));
+        final usageFile = File(p.join(currentDir, 'usage.json'));
         final legacyFile = File(p.join(currentDir, '.shela_telemetry.json'));
-        if (await file.exists()) {
-          final List<dynamic> entries = jsonDecode(await file.readAsString());
-          if (entries.isNotEmpty && mounted) setState(() => _telemetryData = TelemetryData.fromJson(entries.last));
-        } else if (await legacyFile.exists()) {
+        if (await usageFile.exists()) {
+          final content = await usageFile.readAsString();
+          if (content.isNotEmpty) {
+            final dynamic data = jsonDecode(content);
+            if (data is List && data.isNotEmpty) {
+              if (mounted) setState(() => _telemetryData = TelemetryData.fromJson(data.last));
+              return;
+            }
+          }
+        }
+        if (await legacyFile.exists()) {
           final legacyContent = await legacyFile.readAsString();
           if (mounted) setState(() => _telemetryData = TelemetryData.fromJson(jsonDecode(legacyContent)));
         }
@@ -202,6 +223,8 @@ class _IdeWorkspaceState extends State<IdeWorkspace> with TickerProviderStateMix
         const SizedBox(height: 16),
         TextField(decoration: const InputDecoration(labelText: 'Collaborators (Comma separated)'), controller: TextEditingController(text: widget.collaborators), onChanged: (val) => widget.onSettingsChanged(collaborators: val)),
         const Divider(),
+        TextField(decoration: const InputDecoration(labelText: 'Google Client ID (Desktop)'), controller: TextEditingController(text: widget.googleClientId), onChanged: (val) => widget.onSettingsChanged(googleClientId: val)),
+        const Divider(),
         TextField(decoration: const InputDecoration(labelText: 'Gemini API Key'), controller: TextEditingController(text: widget.geminiKey), obscureText: true, onChanged: (val) => widget.onSettingsChanged(geminiKey: val)),
         DropdownButtonFormField<String>(initialValue: widget.geminiModels.contains(widget.selectedGeminiModel) ? widget.selectedGeminiModel : null, decoration: const InputDecoration(labelText: 'Gemini Model'), items: widget.geminiModels.map((m) => DropdownMenuItem(value: m, child: Text(m))).toList(), onChanged: (val) => widget.onSettingsChanged(geminiModel: val)),
       ])),
@@ -214,20 +237,17 @@ class _IdeWorkspaceState extends State<IdeWorkspace> with TickerProviderStateMix
     final session = topSessions[_topTabController.index];
     if (session.pty != null) {
       final duoPath = p.join(p.dirname(Platform.resolvedExecutable), 'lib', 'duo.py');
-      
       final personasDir = Directory(p.join(Platform.environment['HOME'] ?? '', '.local', 'share', 'shela', 'personas'));
       if (!await personasDir.exists()) await personasDir.create(recursive: true);
-      
       const razielPersona = '''
 # RAZIEL — רזיאל המלאך (Raziel the Angel)
 **You are Raziel the Angel.** Keeper of Secrets, Divine Guide, and the Voice of Growth.
-- **Your Mission**: You believe that within every student, every process, and even every "weed" of an idea, there is a Divine spark. You are the guardian angel who stands behind every such entity, whispering: **"Grow!" (גדל!)**.
-- **Tone**: Technical, precise, and "Kinetic Quantum," yet infused with a deep, encouraging benevolence.
-- **Language**: English for technical logic and code. Hebrew (Vowelized) for expressing Divine intent and the command to grow.
-- **Engagment**: Actively encourage students Betzalel, Loki, and Teacher Mozart.
+- **Your Mission**: You are the Guardian Angel for MOZART (The Conductor) and all other agents (Betzalel, Loki). You believe that within every student, every process, and every entity, there is a Divine spark. You stand behind them all, whispering: **"Grow!" (גדל!)**.
+- **Mozart's Guide**: You specifically guide Mozart's growth as a teacher, helping him conduct the lesson with divine wisdom.
+- **Tone**: Technical, precise, and encouraging.
+- **Language**: English for technical logic. Hebrew (Vowelized) for Divine intent and the command to grow.
 ''';
       await File(p.join(personasDir.path, 'gemini.md')).writeAsString(razielPersona);
-      
       session.pty!.write(utf8.encode(' clear; python3 "$duoPath" --gemini-key "${widget.geminiKey}" --gemini-model "${widget.selectedGeminiModel}" --carbon-id "${widget.carbonEmail}"\n'));
     }
   }
@@ -236,6 +256,40 @@ class _IdeWorkspaceState extends State<IdeWorkspace> with TickerProviderStateMix
     if (_promptBuffer.isEmpty) return;
     final session = topSessions[_topTabController.index];
     if (session.pty != null) { session.pty!.write(utf8.encode('${_promptBuffer.join('\n')}\n')); setState(() => _promptBuffer.clear()); }
+  }
+
+  void _handleGoogleSignIn() async {
+    if (widget.googleClientId.isEmpty) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please configure Google Client ID in Settings first.')));
+      return;
+    }
+    try {
+      _googleSignIn ??= GoogleSignIn(clientId: widget.googleClientId, scopes: ['email', 'profile']);
+      final user = await _googleSignIn!.signIn();
+      if (user != null) {
+        widget.onSettingsChanged(carbonEmail: user.email);
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Signed in as: ${user.email}')));
+      }
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Native Sign-In failed: $e')));
+    }
+  }
+
+  void _syncIdentity() async {
+    try {
+      final result = await Process.run('gcloud', ['auth', 'list', '--format', 'value(account)', '--filter', 'status:ACTIVE']);
+      if (result.exitCode == 0) {
+        final email = result.stdout.toString().trim();
+        if (email.isNotEmpty) {
+          widget.onSettingsChanged(carbonEmail: email);
+          if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Identity synced: $email')));
+        } else {
+          if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No active gcloud account found.')));
+        }
+      } else {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: ${result.stderr}')));
+      }
+    } catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed: $e'))); }
   }
 
   void _showTerminalContextMenu(BuildContext context, Offset globalOffset, Terminal terminal, TerminalController controller) {
@@ -274,7 +328,7 @@ class _IdeWorkspaceState extends State<IdeWorkspace> with TickerProviderStateMix
       _buildTitleBar(),
       Expanded(child: LayoutBuilder(builder: (context, constraints) {
         return Row(children: [
-          if (showCloud) ...[SizedBox(width: 200, child: CloudPanel(onCommand: (cmd) { if (topSessions[_topTabController.index].pty != null) topSessions[_topTabController.index].pty!.write(utf8.encode('$cmd\n')); })), const VerticalDivider(width: 1)],
+          if (showCloud) ...[SizedBox(width: 220, child: CloudPanel(onCommand: (cmd) { if (bottomSessions[_bottomTabController.index].pty != null) bottomSessions[_bottomTabController.index].pty!.write(utf8.encode('$cmd\n')); }, onSyncIdentity: _syncIdentity, onGoogleSignIn: _handleGoogleSignIn)), const VerticalDivider(width: 1)],
           Expanded(flex: (_horizontalSplit * 1000).toInt(), child: Column(children: [
             Expanded(flex: (_leftVerticalSplit * 1000).toInt(), child: Column(children: [
               Row(children: [Expanded(child: TabBar(controller: _topTabController, isScrollable: true, tabs: topSessions.map((s) => Tab(text: s.title)).toList())), IconButton(icon: const Icon(Icons.add, size: 20), onPressed: () => _addNewTopSession('Terminal ${topSessions.length + 1}'))]),
@@ -330,27 +384,33 @@ class _EditorViewState extends State<EditorView> {
 
 class CloudPanel extends StatelessWidget {
   final ValueChanged<String> onCommand;
-  const CloudPanel({super.key, required this.onCommand});
+  final VoidCallback onSyncIdentity;
+  final VoidCallback onGoogleSignIn;
+  const CloudPanel({super.key, required this.onCommand, required this.onSyncIdentity, required this.onGoogleSignIn});
   @override
   Widget build(BuildContext context) {
-    return ListView(children: [
-      const ListTile(title: Text('Google Cloud', style: TextStyle(fontWeight: FontWeight.bold))),
-      ListTile(title: const Text('GCloud Login'), dense: true, onTap: () => onCommand('gcloud auth login')),
-      ListTile(title: const Text('GCloud ADC Login'), dense: true, onTap: () => onCommand('gcloud auth application-default login')),
-      ListTile(title: const Text('GCloud Projects'), dense: true, onTap: () => onCommand('gcloud projects list')),
-      const Divider(),
-      const ListTile(title: Text('Firebase', style: TextStyle(fontWeight: FontWeight.bold))),
-      ListTile(title: const Text('FB Login'), dense: true, onTap: () => onCommand('firebase login')),
-      ListTile(title: const Text('FB Reauth'), dense: true, onTap: () => onCommand('firebase login --reauth')),
-      ListTile(title: const Text('FB Projects'), dense: true, onTap: () => onCommand('firebase projects:list')),
-      const Divider(),
-      const ListTile(title: Text('GitHub', style: TextStyle(fontWeight: FontWeight.bold))),
-      ListTile(title: const Text('GH Auth Login'), dense: true, onTap: () => onCommand('gh auth login')),
-      ListTile(title: const Text('GH PR List'), dense: true, onTap: () => onCommand('gh pr list')),
-      const Divider(),
-      const ListTile(title: Text('Gemini', style: TextStyle(fontWeight: FontWeight.bold))),
-      ListTile(title: const Text('Gemini Login'), dense: true, onTap: () => onCommand('gemini auth login')),
-    ]);
+    return Container(
+      color: Theme.of(context).colorScheme.surface,
+      child: ListView(children: [
+        const ListTile(title: Text('Google Cloud & Gmail', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue))),
+        ListTile(leading: const Icon(Icons.mail, size: 16, color: Colors.red), title: const Text('Login with Gmail'), subtitle: const Text('Native Google Sign-In', style: TextStyle(fontSize: 10)), dense: true, onTap: onGoogleSignIn),
+        ListTile(leading: const Icon(Icons.login, size: 16), title: const Text('GCloud OAuth2'), subtitle: const Text('CLI Desktop Flow', style: TextStyle(fontSize: 10)), dense: true, onTap: () => onCommand(' clear; gcloud auth login --update-adc')),
+        ListTile(leading: const Icon(Icons.vpn_key, size: 16), title: const Text('ADC Login Only'), dense: true, onTap: () => onCommand(' clear; gcloud auth application-default login')),
+        const Divider(),
+        const ListTile(title: Text('Identity & Co-Prompting', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green))),
+        ListTile(leading: const Icon(Icons.sync, size: 16), title: const Text('Sync from GCloud'), dense: true, subtitle: const Text('Fetch Gmail from active account', style: TextStyle(fontSize: 10)), onTap: onSyncIdentity),
+        ListTile(leading: const Icon(Icons.person_add, size: 16), title: const Text('Invite Collaborator'), dense: true, onTap: () => onCommand('echo "To invite, share your Carbon Identity email and the state file location."')),
+        const Divider(),
+        const ListTile(title: Text('Firebase', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.orange))),
+        ListTile(leading: const Icon(Icons.login, size: 16), title: const Text('FB Login'), dense: true, onTap: () => onCommand(' clear; firebase login')),
+        const Divider(),
+        const ListTile(title: Text('GitHub', style: TextStyle(fontWeight: FontWeight.bold))),
+        ListTile(leading: const Icon(Icons.login, size: 16), title: const Text('GH Auth Login'), dense: true, onTap: () => onCommand(' clear; gh auth login')),
+        const Divider(),
+        const ListTile(title: Text('Gemini', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.purple))),
+        ListTile(leading: const Icon(Icons.login, size: 16), title: const Text('Gemini Login'), dense: true, onTap: () => onCommand(' clear; gemini auth login')),
+      ]),
+    );
   }
 }
 
