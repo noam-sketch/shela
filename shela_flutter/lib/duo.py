@@ -17,9 +17,9 @@ import concurrent.futures
 # Communication Config
 STATE_FILE = ".shela_duo_state.md"
 DELIMITER_CARBON = "<<<CARBON>>>"
-DELIMITER_GEMINI = "<<<GEMINI>>>"
-DELIMITER_CLAUDE = "<<<CLAUDE>>>"
-DELIMITER_CODEX = "<<<CODEX>>>"
+DELIMITER_RAZIEL = "<<<RAZIEL>>>"
+DELIMITER_BETZALEL = "<<<BETZALEL>>>"
+DELIMITER_LOKI = "<<<LOKI>>>"
 DELIMITER_TERMINATE = "<<<TERMINATE>>>"
 DELIMITER_THOUGHT = "<<<THOUGHT>>>"
 DELIMITER_THOUGHT_STREAM = "<<<THOUGHT_STREAM>>>"
@@ -65,7 +65,6 @@ class DuoUI:
 
     def _spin(self):
         while not self.stop_spinner.is_set():
-            # \r to start, \x1b[2K to clear line. Truncate strictly to prevent wrap.
             display_tip = self._current_tip[:60]
             sys.stdout.write(f"\r\x1b[2K\x1b[1;34m{next(self.spinner)} {display_tip}\x1b[0m")
             sys.stdout.flush()
@@ -177,6 +176,25 @@ def _execute_curl(cmd, provider="anthropic", stream=True):
         return "Error: No content returned"
     except Exception as e: ui.stop(); return f"Error: {e}"
 
+def compress_state_file(state_path, betzalel_guide, base_instructions, anthropic_key, anthropic_model):
+    with open(state_path, "r") as f:
+        state_content = f.read()
+    
+    if len(state_content) > 15000:
+        print(f"\n\x1b[1;36m[System] State file exceeding 15k characters. Compressing...\x1b[0m")
+        system_prompt = f"ARCHITECTURAL_GUIDE:\n{betzalel_guide}\n\nINSTRUCTIONS:\n{base_instructions}"
+        message_content = f"The following is a project state log. It has grown too large. Please summarize the key decisions, context, and current status into a concise compressed state format. Retain all important details, plans, and code snippets necessary for context. Here is the log:\n\n{state_content}"
+        
+        compressed = run_anthropic_api(system_prompt, message_content, "Compressor (Betzalel)", "36", anthropic_key, anthropic_model, stream=False)
+        
+        if not compressed.startswith("Error"):
+            new_state = f"# Duo Session State (Compressed)\n\n{compressed}\n"
+            with open(state_path, "w") as f:
+                f.write(new_state)
+            print(f"\x1b[1;32m[System] State compressed successfully.\x1b[0m")
+        else:
+            print(f"\x1b[1;31m[System] State compression failed: {compressed}\x1b[0m")
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--anthropic-model", default=os.environ.get("ANTHROPIC_MODEL", "claude-3-5-sonnet-latest"))
@@ -226,6 +244,9 @@ def main():
     )
 
     while True:
+        # Check if compression is needed
+        compress_state_file(state_path, betzalel_guide, base_instructions, anthropic_key, args.anthropic_model)
+
         with open(state_path, "r") as f: state = f.read()
         with open(brainstorm_file, "r") as f: plan = f.read()
 
@@ -237,10 +258,10 @@ def main():
 
         # Prepare prompts
         raziel_sys = f"STYLE_GUIDE:\n{raziel_guide}\n\nINSTRUCTIONS:\n{base_instructions}"
-        raziel_msg = f"Respond as {DELIMITER_GEMINI}. CURRENT_STATE:\n{state}\nPLAN:\n{plan}\nNEW_INPUT: {user_input}\n"
+        raziel_msg = f"Respond as {DELIMITER_RAZIEL}. CURRENT_STATE:\n{state}\nPLAN:\n{plan}\nNEW_INPUT: {user_input}\n"
 
         loki_sys = f"CREATIVE_GUIDE:\n{loki_guide}\n\nINSTRUCTIONS:\n{base_instructions}"
-        loki_msg = f"Respond as {DELIMITER_CODEX}. CURRENT_STATE:\n{state}\nPLAN:\n{plan}\nNEW_INPUT: {user_input}\n"
+        loki_msg = f"Respond as {DELIMITER_LOKI}. CURRENT_STATE:\n{state}\nPLAN:\n{plan}\nNEW_INPUT: {user_input}\n"
 
         # Execute Raziel and Loki concurrently
         with concurrent.futures.ThreadPoolExecutor() as executor:
@@ -255,15 +276,15 @@ def main():
         print(f"\n\x1b[1;31m[LOKI ({args.openai_model})]\x1b[0m\n{loki_out}")
 
         with open(state_path, "a") as f: 
-            f.write(f"\n{DELIMITER_GEMINI}\n{raziel_out}\n")
-            f.write(f"\n{DELIMITER_CODEX}\n{loki_out}\n")
+            f.write(f"\n{DELIMITER_RAZIEL}\n{raziel_out}\n")
+            f.write(f"\n{DELIMITER_LOKI}\n{loki_out}\n")
 
         # BETZALEL Turn (Synthesis)
         betzalel_sys = f"ARCHITECTURAL_GUIDE:\n{betzalel_guide}\n\nINSTRUCTIONS:\n{base_instructions}"
-        betzalel_msg = f"Respond as {DELIMITER_CLAUDE}. CURRENT_STATE:\n{state}\nPLAN:\n{plan}\nRAZIEL_ANALYSIS: {raziel_out}\nLOKI_TRANSFORMATION: {loki_out}\nSYNTHESIZE BOTH INPUTS.\n"
+        betzalel_msg = f"Respond as {DELIMITER_BETZALEL}. CURRENT_STATE:\n{state}\nPLAN:\n{plan}\nRAZIEL_ANALYSIS: {raziel_out}\nLOKI_TRANSFORMATION: {loki_out}\nSYNTHESIZE BOTH INPUTS.\n"
         betzalel_out = run_anthropic_api(betzalel_sys, betzalel_msg, "Betzalel", "36", anthropic_key, args.anthropic_model, True)
         
-        with open(state_path, "a") as f: f.write(f"\n{DELIMITER_CLAUDE}\n{betzalel_out}\n")
+        with open(state_path, "a") as f: f.write(f"\n{DELIMITER_BETZALEL}\n{betzalel_out}\n")
 
         time.sleep(0.1)
 
