@@ -63,7 +63,6 @@ class DuoUI:
     def _spin(self):
         while not self.stop_spinner.is_set():
             # \r to start of line, \x1b[K to clear from cursor to end of line
-            # Truncate tip to 80 chars to prevent wrapping
             display_tip = self._current_tip[:100]
             sys.stdout.write(f"\r\x1b[K\x1b[1;34m{next(self.spinner)} {display_tip}\x1b[0m")
             sys.stdout.flush()
@@ -114,13 +113,13 @@ def run_anthropic_api(system_prompt, message_content, label, color_code, keys):
     print(f"\n\x1b[1;{color_code}m--- {label.upper()} (Anthropic API) --- \x1b[0m")
     ui.start(label)
     payload = {
-        "model": "claude-3-5-sonnet-20241022",
+        "model": "claude-3-5-sonnet-latest",
         "max_tokens": 4096,
         "system": system_prompt,
         "messages": [{"role": "user", "content": message_content}]
     }
     cmd = ["curl", "-s", "https://api.anthropic.com/v1/messages", "-H", "content-type: application/json", "-H", f"x-api-key: {api_key}", "-H", "anthropic-version: 2023-06-01", "-d", json.dumps(payload)]
-    return _execute_curl(cmd)
+    return _execute_curl(cmd, provider="anthropic")
 
 def run_gemini_api(system_prompt, message_content, label, color_code, keys):
     api_key = keys.get("GEMINI_API_KEY")
@@ -130,9 +129,11 @@ def run_gemini_api(system_prompt, message_content, label, color_code, keys):
     print(f"\n\x1b[1;{color_code}m--- {label.upper()} (Gemini API) --- \x1b[0m")
     ui.start(label)
     payload = {
-        "contents": [{"parts": [{"text": f"SYSTEM_INSTRUCTIONS: {system_prompt}\n\nUSER_MESSAGE: {message_content}"}]}]
+        "system_instruction": {"parts": [{"text": system_prompt}]},
+        "contents": [{"parts": [{"text": message_content}]}]
     }
-    url = f"https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key={api_key}"
+    # Using v1beta for system_instruction support
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
     cmd = ["curl", "-s", "-X", "POST", url, "-H", "Content-Type: application/json", "-d", json.dumps(payload)]
     return _execute_curl(cmd, provider="google")
 
@@ -170,14 +171,20 @@ def _execute_curl(cmd, provider="anthropic"):
 
         text = ""
         if provider == "anthropic":
-            if "content" in res: text = res["content"][0]["text"]
-            else: print(f"\x1b[1;31mAnthropic API Error: {res}\x1b[0m")
+            if "content" in res and len(res["content"]) > 0:
+                text = res["content"][0]["text"]
+            else:
+                print(f"\x1b[1;31mAnthropic API Error: {json.dumps(res, indent=2)}\x1b[0m")
         elif provider == "google":
-            if "candidates" in res: text = res["candidates"][0]["content"]["parts"][0]["text"]
-            else: print(f"\x1b[1;31mGemini API Error: {res}\x1b[0m")
+            if "candidates" in res and len(res["candidates"]) > 0:
+                text = res["candidates"][0]["content"]["parts"][0]["text"]
+            else:
+                print(f"\x1b[1;31mGemini API Error: {json.dumps(res, indent=2)}\x1b[0m")
         elif provider == "openai":
-            if "choices" in res: text = res["choices"][0]["message"]["content"]
-            else: print(f"\x1b[1;31mOpenAI API Error: {res}\x1b[0m")
+            if "choices" in res and len(res["choices"]) > 0:
+                text = res["choices"][0]["message"]["content"]
+            else:
+                print(f"\x1b[1;31mOpenAI API Error: {json.dumps(res, indent=2)}\x1b[0m")
         
         if text:
             for char in text:
