@@ -13,9 +13,9 @@ import re
 # Communication Config
 STATE_FILE = ".shela_duo_state.md"
 DELIMITER_CARBON = "<<<CARBON>>>"
-DELIMITER_USER1 = "<<<USER_GEMINI>>>"
-DELIMITER_USER2 = "<<<USER_CLAUDE>>>"
-DELIMITER_USER3 = "<<<USER_LOKI>>>"
+DELIMITER_GEMINI = "<<<GEMINI>>>"
+DELIMITER_CLAUDE = "<<<CLAUDE>>>"
+DELIMITER_CODEX = "<<<CODEX>>>"
 DELIMITER_TERMINATE = "<<<TERMINATE>>>"
 DELIMITER_THOUGHT = "<<<THOUGHT>>>"
 DELIMITER_THOUGHT_STREAM = "<<<THOUGHT_STREAM>>>"
@@ -165,32 +165,32 @@ def main():
         raziel_prompt = (
             f"STYLE_GUIDE: {raziel_guide}\n\n"
             f"INSTRUCTIONS: {base_instructions}\n"
-            f"Respond as {DELIMITER_USER1}. Task: Contribute to the project state.\n"
+            f"Respond as {DELIMITER_GEMINI}. Task: Contribute to the project state.\n"
             f"CURRENT_STATE:\n{state}\nPLAN:\n{plan}\nNEW_INPUT (from {DELIMITER_CARBON}): {user_input}\n"
         )
         raziel_out = run_agent_stream(["gemini", "-p", raziel_prompt, "-o", "text"], "Raziel", "35")
-        with open(state_path, "a") as f: f.write(f"\n{DELIMITER_USER1}\n{raziel_out}\n")
+        with open(state_path, "a") as f: f.write(f"\n{DELIMITER_GEMINI}\n{raziel_out}\n")
 
         # BETZALEL Turn
         betzalel_prompt = (
             f"ARCHITECTURAL_GUIDE: {betzalel_guide}\n\n"
             f"INSTRUCTIONS: {base_instructions}\n"
-            f"Respond as {DELIMITER_USER2}. Task: Review structure and suggest changes.\n"
+            f"Respond as {DELIMITER_CLAUDE}. Task: Review structure and suggest changes.\n"
             f"CURRENT_STATE:\n{state}\nPLAN:\n{plan}\nLAST_UPDATE: {raziel_out}\n"
         )
         betzalel_cmd = ["npx", "-y", "@anthropic-ai/claude-code", "--continue", "--print", betzalel_prompt]
         betzalel_out = run_agent_stream(betzalel_cmd, "Betzalel", "36", is_pty=True)
-        with open(state_path, "a") as f: f.write(f"\n{DELIMITER_USER2}\n{betzalel_out}\n")
+        with open(state_path, "a") as f: f.write(f"\n{DELIMITER_CLAUDE}\n{betzalel_out}\n")
 
         # LOKI Turn
         loki_prompt = (
             f"CREATIVE_GUIDE: {loki_guide}\n\n"
             f"INSTRUCTIONS: {base_instructions}\n"
-            f"Respond as {DELIMITER_USER3}. Task: Transform and push boundaries.\n"
+            f"Respond as {DELIMITER_CODEX}. Task: Transform and push boundaries.\n"
             f"CURRENT_STATE:\n{state}\nPLAN:\n{plan}\nPREVIOUS_INPUT: {betzalel_out}\n"
         )
         loki_out = run_agent_stream(["codex", loki_prompt], "Loki", "31")
-        with open(state_path, "a") as f: f.write(f"\n{DELIMITER_USER3}\n{loki_out}\n")
+        with open(state_path, "a") as f: f.write(f"\n{DELIMITER_CODEX}\n{loki_out}\n")
 
         time.sleep(0.1)
 

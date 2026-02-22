@@ -14,6 +14,7 @@ void main() {
         content: 'Hello',
         controller: controller,
         selectedFileExtension: 'dart',
+        onChanged: () {},
       );
 
       expect(doc.filePath, '/test/path.dart');
@@ -30,7 +31,7 @@ void main() {
        final file = File(p.join(tempDir.path, 'test.py'));
        await file.writeAsString('print("hello")');
        
-       final doc = await Document.fromFile(file);
+       final doc = await Document.fromFile(file, onChanged: () {});
        expect(doc.filePath, file.path);
        expect(doc.content, 'print("hello")');
        expect(doc.selectedFileExtension, 'py');

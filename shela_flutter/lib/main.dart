@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
@@ -116,31 +117,59 @@ class Document {
   TextEditingController controller;
   String selectedFileExtension;
   bool isEditing;
+  final VoidCallback onChanged;
+  StreamSubscription<FileSystemEvent>? _fileWatcher;
 
   Document({
     required this.filePath,
     required this.content,
     required this.controller,
     required this.selectedFileExtension,
+    required this.onChanged,
     this.isEditing = false,
   });
 
   // Constructor to create a Document from a File
-  static Future<Document> fromFile(File file) async {
+  static Future<Document> fromFile(File file, {required VoidCallback onChanged}) async {
     final content = await file.readAsString();
     final controller = TextEditingController(text: content);
     final selectedFileExtension = p.extension(file.path).replaceAll('.', '');
-    return Document(
+    final doc = Document(
       filePath: file.path,
       content: content,
       controller: controller,
       selectedFileExtension: selectedFileExtension,
+      onChanged: onChanged,
     );
+    doc.initWatcher();
+    return doc;
   }
 
-  // Dispose of the controller when the document is closed
+  void initWatcher() {
+    _fileWatcher?.cancel();
+    try {
+      _fileWatcher = File(filePath).watch().listen((event) async {
+        if (isEditing) return; // Don't overwrite if user is typing
+        try {
+          final newContent = await File(filePath).readAsString();
+          if (newContent != content) {
+            content = newContent;
+            controller.text = newContent;
+            onChanged();
+          }
+        } catch (e) {
+          debugPrint('Error reloading file: $e');
+        }
+      });
+    } catch (e) {
+      debugPrint('Error starting file watcher: $e');
+    }
+  }
+
+  // Dispose of the controller and watcher when the document is closed
   void dispose() {
     controller.dispose();
+    _fileWatcher?.cancel();
   }
 }
 
@@ -616,7 +645,12 @@ Shapeshifter, Catalyst, and Master of Narrative Inversion.
 
     // Otherwise, create a new document
     try {
-      final doc = await Document.fromFile(file);
+      final doc = await Document.fromFile(
+        file,
+        onChanged: () {
+          if (mounted) setState(() {});
+        },
+      );
       setState(() {
         openDocuments.add(doc);
         activeDocumentIndex = openDocuments.length - 1;
@@ -1040,10 +1074,41 @@ class FileBrowser extends StatefulWidget {
 
 class _FileBrowserState extends State<FileBrowser> {
   List<FileSystemEntity> _entities = [];
+  StreamSubscription<FileSystemEvent>? _watcher;
+
   @override
-  void initState() { super.initState(); _loadDirectory(); }
+  void initState() {
+    super.initState();
+    _loadDirectory();
+    _initWatcher();
+  }
+
   @override
-  void didUpdateWidget(FileBrowser oldWidget) { super.didUpdateWidget(oldWidget); if (oldWidget.currentDir != widget.currentDir) _loadDirectory(); }
+  void didUpdateWidget(FileBrowser oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.currentDir != widget.currentDir) {
+      _loadDirectory();
+      _initWatcher();
+    }
+  }
+
+  @override
+  void dispose() {
+    _watcher?.cancel();
+    super.dispose();
+  }
+
+  void _initWatcher() {
+    _watcher?.cancel();
+    try {
+      _watcher = Directory(widget.currentDir).watch().listen((event) {
+        _loadDirectory();
+      });
+    } catch (e) {
+      debugPrint('Error starting directory watcher: $e');
+    }
+  }
+
   void _loadDirectory() {
     try {
       final dir = Directory(widget.currentDir);
@@ -1053,8 +1118,15 @@ class _FileBrowserState extends State<FileBrowser> {
         if (a is! Directory && b is Directory) return 1;
         return p.basename(a.path).toLowerCase().compareTo(p.basename(b.path).toLowerCase());
       });
-      setState(() => _entities = list);
-    } catch (e) { debugPrint('Error loading directory: $e'); setState(() => _entities = []); }
+      if (mounted) {
+        setState(() => _entities = list);
+      }
+    } catch (e) {
+      debugPrint('Error loading directory: $e');
+      if (mounted) {
+        setState(() => _entities = []);
+      }
+    }
   }
 
   void _showCreateFileDialog(BuildContext context) async {
