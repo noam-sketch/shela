@@ -105,7 +105,8 @@ def run_gemini_api(system_prompt, message_content, label, color_code):
     print(f"\n\x1b[1;{color_code}m--- {label.upper()} (Gemini API) --- \x1b[0m")
     ui.start(label)
     payload = {
-        "contents": [{"parts": [{"text": f"SYSTEM_INSTRUCTIONS: {system_prompt}\n\nUSER_MESSAGE: {message_content}"}]}]
+        "system_instruction": {"parts": [{"text": system_prompt}]},
+        "contents": [{"parts": [{"text": message_content}]}]
     }
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key={api_key}"
     cmd = ["curl", "-s", "-X", "POST", url, "-H", "Content-Type: application/json", "-d", json.dumps(payload)]
