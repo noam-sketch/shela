@@ -226,7 +226,7 @@ def main():
             f"If there's nothing new to add, respond with a short acknowledgement or pass.\n"
             f"Conversation History:\n{state}\n{DELIMITER_USER0}\n{user_input}\n{DELIMITER_USER1}\n{gemini_out}\n{DELIMITER_USER2}\n{claude_out}\n"
         )
-        loki_out = run_agent_stream(["codex", "-p", loki_prompt, "-o", "text"], "Loki", "31")
+        loki_out = run_agent_stream(["codex", loki_prompt], "Loki", "31")
         with open(state_path, "a") as f:
             f.write(f"\n{DELIMITER_USER3}\n{loki_out}\n")
 
