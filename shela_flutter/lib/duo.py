@@ -17,6 +17,9 @@ DELIMITER_USER1 = "<<<USER_GEMINI>>>"
 DELIMITER_USER2 = "<<<USER_CLAUDE>>>"
 DELIMITER_USER3 = "<<<USER_LOKI>>>"
 DELIMITER_TERMINATE = "<<<TERMINATE>>>"
+DELIMITER_THOUGHT = "<<<THOUGHT>>>"
+DELIMITER_THOUGHT_STREAM = "<<<THOUGHT_STREAM>>>"
+DELIMITER_HULT = "<<<HULT>>>"
 
 # Persona file paths (to be created by Dart code)
 GEMINI_PERSONA_FILE = os.path.join(os.path.expanduser('~'), '.local', 'share', 'shela', 'personas', 'gemini.md')
@@ -160,6 +163,14 @@ def main():
     print(f"
 \x1b[1;33m[Shela Duo] Collaborative Multi-Agent Session Active.\x1b[0m")
     print(f"\x1b[1;33mAll participants (Human, Gemini, Claude, Codex) will contribute to a shared context.\x1b[0m")
+
+    system_instructions = (
+        f"You MUST use the following delimiters for structured output:\n"
+        f"- Use {DELIMITER_THOUGHT} for internal logical reasoning or step-by-step analysis.\n"
+        f"- Use {DELIMITER_THOUGHT_STREAM} for rapid brainstorming, raw associations, or creative flow.\n"
+        f"- Use {DELIMITER_HULT} if you must halt the process and wait for explicit human intervention/clarification.\n"
+        f"- Always prefix your response with your specific user delimiter (e.g., {DELIMITER_USER1}).\n"
+    )
 
     while True:
         with open(STATE_FILE, "r") as f: state = f.read()
