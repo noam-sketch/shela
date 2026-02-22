@@ -1,0 +1,52 @@
+<svg width="600" height="400" viewBox="0 0 600 400" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background -->
+  <rect width="600" height="400" fill="#1e1e2e" rx="10"/>
+
+  <!-- EXE Agent -->
+  <rect x="50" y="50" width="120" height="60" fill="#fab387" rx="5"/>
+  <text x="110" y="85" font-family="Arial" font-size="14" fill="#11111b" text-anchor="middle" font-weight="bold">⚙️ EXE Agent</text>
+
+  <!-- State File -->
+  <rect x="240" y="50" width="120" height="60" fill="#313244" stroke="#b4befe" stroke-width="2" rx="5"/>
+  <text x="300" y="85" font-family="Arial" font-size="12" fill="#cdd6f4" text-anchor="middle">.shela_duo_state.md</text>
+
+  <!-- Flutter UI (Watcher) -->
+  <rect x="430" y="50" width="120" height="60" fill="#89b4fa" rx="5"/>
+  <text x="490" y="85" font-family="Arial" font-size="14" fill="#11111b" text-anchor="middle" font-weight="bold">Flutter UI</text>
+
+  <!-- Child Process -->
+  <rect x="430" y="200" width="120" height="60" fill="#f38ba8" rx="5"/>
+  <text x="490" y="235" font-family="Arial" font-size="14" fill="#11111b" text-anchor="middle" font-weight="bold">Child Process</text>
+
+  <!-- Interactive Terminal -->
+  <rect x="240" y="300" width="120" height="60" fill="#a6e3a1" rx="5"/>
+  <text x="300" y="335" font-family="Arial" font-size="12" fill="#11111b" text-anchor="middle" font-weight="bold">Floating Terminal</text>
+
+  <!-- Flow Arrows -->
+  <!-- EXE to State -->
+  <path d="M 170 80 L 235 80" stroke="#fab387" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="202" y="70" font-family="Arial" font-size="10" fill="#bac2de" text-anchor="middle">Writes Cmd</text>
+
+  <!-- State to Flutter -->
+  <path d="M 360 80 L 425 80" stroke="#89b4fa" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="392" y="70" font-family="Arial" font-size="10" fill="#bac2de" text-anchor="middle">Detects</text>
+
+  <!-- Flutter to Child Proc -->
+  <path d="M 490 110 L 490 195" stroke="#f38ba8" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="510" y="150" font-family="Arial" font-size="10" fill="#bac2de" text-anchor="left">Spawns</text>
+
+  <!-- Child Proc to State (Tail) -->
+  <path d="M 430 230 L 300 230 L 300 115" stroke="#eba0ac" stroke-width="2" fill="none" marker-end="url(#arrow)"/>
+  <text x="350" y="220" font-family="Arial" font-size="10" fill="#bac2de" text-anchor="middle">Tails Output</text>
+
+  <!-- Flutter to Floating Terminal -->
+  <path d="M 430 80 L 300 80 L 300 295" stroke="#a6e3a1" stroke-width="2" fill="none" marker-end="url(#arrow)"/>
+  <text x="260" y="200" font-family="Arial" font-size="10" fill="#bac2de" text-anchor="middle">Attaches UI</text>
+
+  <!-- Definitions -->
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#cdd6f4" />
+    </marker>
+  </defs>
+</svg>

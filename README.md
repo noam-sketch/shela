@@ -26,6 +26,18 @@ Shela is a modern, Gemini-powered AI IDE and Terminal for Linux, built with Flut
   - **Think Before Doing**: Agents are required to document their strategy in `plan/current_task.md` before executing significant changes.
   - **Structured Delimiters**: Color-coded headers with `[timestamp][from:Name]` metadata for total transparency.
 
+## Architecture
+
+### Multi-Agent Orchestration
+Shela uses a centralized state file as a command bus where Mozart orchestrates the high-level flow, and students (Q, Betzalel, Loki, EXE) contribute their specialized skills.
+
+![Orchestration Architecture](assets/architecture_orchestration.svg)
+
+### Non-Blocking Execution
+All shell commands are delegated to background child processes by the Flutter UI. This ensures the IDE remains responsive while output is tailed back to the shared state for agent awareness.
+
+![Execution Architecture](assets/architecture_execution.svg)
+
 ## Protocol & Governance
 
 Shela operates under the **WTLTTILTRLTBR Kata**:
