@@ -30,6 +30,9 @@ class _ShelaAppState extends State<ShelaApp> {
   ThemeMode _themeMode = ThemeMode.dark;
   Color _primaryColor = Colors.deepPurple;
   double _fontSize = 13.0;
+  String _anthropicKey = '';
+  String _geminiKey = '';
+  String _openaiKey = '';
 
   @override
   void initState() {
@@ -43,6 +46,9 @@ class _ShelaAppState extends State<ShelaApp> {
       _themeMode = ThemeMode.values[prefs.getInt('themeMode') ?? ThemeMode.dark.index];
       _primaryColor = Color(prefs.getInt('primaryColor') ?? Colors.deepPurple.toARGB32());
       _fontSize = prefs.getDouble('fontSize') ?? 13.0;
+      _anthropicKey = prefs.getString('anthropicKey') ?? '';
+      _geminiKey = prefs.getString('geminiKey') ?? '';
+      _openaiKey = prefs.getString('openaiKey') ?? '';
     });
   }
 
@@ -51,13 +57,26 @@ class _ShelaAppState extends State<ShelaApp> {
     await prefs.setInt('themeMode', _themeMode.index);
     await prefs.setInt('primaryColor', _primaryColor.toARGB32());
     await prefs.setDouble('fontSize', _fontSize);
+    await prefs.setString('anthropicKey', _anthropicKey);
+    await prefs.setString('geminiKey', _geminiKey);
+    await prefs.setString('openaiKey', _openaiKey);
   }
 
-  void _updateTheme(ThemeMode mode, Color color, double fontSize) {
+  void _updateSettings({
+    ThemeMode? mode,
+    Color? color,
+    double? fontSize,
+    String? anthropicKey,
+    String? geminiKey,
+    String? openaiKey,
+  }) {
     setState(() {
-      _themeMode = mode;
-      _primaryColor = color;
-      _fontSize = fontSize;
+      if (mode != null) _themeMode = mode;
+      if (color != null) _primaryColor = color;
+      if (fontSize != null) _fontSize = fontSize;
+      if (anthropicKey != null) _anthropicKey = anthropicKey;
+      if (geminiKey != null) _geminiKey = geminiKey;
+      if (openaiKey != null) _openaiKey = openaiKey;
     });
     _saveSettings();
   }
@@ -85,7 +104,10 @@ class _ShelaAppState extends State<ShelaApp> {
       home: IdeWorkspace(
         initialDir: widget.initialDir,
         fontSize: _fontSize,
-        onThemeChanged: _updateTheme,
+        anthropicKey: _anthropicKey,
+        geminiKey: _geminiKey,
+        openaiKey: _openaiKey,
+        onSettingsChanged: _updateSettings,
       ),
     );
   }
@@ -190,8 +212,20 @@ IconData getFileIconFromPath(String filePath) {
 class IdeWorkspace extends StatefulWidget {
   final String? initialDir;
   final double fontSize;
-  final Function(ThemeMode, Color, double) onThemeChanged;
-  const IdeWorkspace({super.key, this.initialDir, required this.fontSize, required this.onThemeChanged});
+  final String anthropicKey;
+  final String geminiKey;
+  final String openaiKey;
+  final Function({ThemeMode? mode, Color? color, double? fontSize, String? anthropicKey, String? geminiKey, String? openaiKey}) onSettingsChanged;
+  
+  const IdeWorkspace({
+    super.key, 
+    this.initialDir, 
+    required this.fontSize, 
+    required this.anthropicKey,
+    required this.geminiKey,
+    required this.openaiKey,
+    required this.onSettingsChanged
+  });
 
   @override
   State<IdeWorkspace> createState() => _IdeWorkspaceState();
@@ -303,6 +337,15 @@ class _IdeWorkspaceState extends State<IdeWorkspace> {
     sessions.add(session);
   }
 
+  Map<String, String> _getCustomEnv() {
+    return {
+      ...Platform.environment,
+      'ANTHROPIC_API_KEY': widget.anthropicKey,
+      'GEMINI_API_KEY': widget.geminiKey,
+      'OPENAI_API_KEY': widget.openaiKey,
+    };
+  }
+
   void _addBottomSession(String title) {
     final terminal = Terminal(maxLines: 10000);
     final controller = TerminalController();
@@ -311,7 +354,7 @@ class _IdeWorkspaceState extends State<IdeWorkspace> {
         Platform.environment['SHELL'] ?? 'bash',
         columns: terminal.viewWidth,
         rows: terminal.viewHeight,
-        environment: Platform.environment,
+        environment: _getCustomEnv(),
       );
 
       pty.output.cast<List<int>>().transform(const Utf8Decoder(allowMalformed: true)).listen((text) {
@@ -350,7 +393,7 @@ class _IdeWorkspaceState extends State<IdeWorkspace> {
         Platform.environment['SHELL'] ?? 'bash',
         columns: terminal.viewWidth,
         rows: terminal.viewHeight,
-        environment: Platform.environment,
+        environment: _getCustomEnv(),
         workingDirectory: currentDir,
       );
 
@@ -400,58 +443,82 @@ class _IdeWorkspaceState extends State<IdeWorkspace> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Settings'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              title: const Text('Theme Mode'),
-              trailing: DropdownButton<ThemeMode>(
-                value: Theme.of(context).brightness == Brightness.dark ? ThemeMode.dark : ThemeMode.light,
-                onChanged: (mode) {
-                  if (mode != null) widget.onThemeChanged(mode, Theme.of(context).primaryColor, widget.fontSize);
-                  Navigator.pop(context);
-                },
-                items: const [
-                  DropdownMenuItem(value: ThemeMode.light, child: Text('Light')),
-                  DropdownMenuItem(value: ThemeMode.dark, child: Text('Dark')),
-                ],
-              ),
-            ),
-            const Divider(),
-            ListTile(
-              title: const Text('Font Size'),
-              subtitle: StatefulBuilder(
-                builder: (context, setState) => Slider(
-                  value: widget.fontSize,
-                  min: 8,
-                  max: 24,
-                  divisions: 16,
-                  label: widget.fontSize.round().toString(),
-                  onChanged: (value) {
-                    widget.onThemeChanged(
-                      Theme.of(context).brightness == Brightness.dark ? ThemeMode.dark : ThemeMode.light,
-                      Theme.of(context).primaryColor,
-                      value,
-                    );
-                  },
-                ),
-              ),
-              trailing: Text(widget.fontSize.round().toString()),
-            ),
-            const Divider(),
-            Wrap(
-              spacing: 8,
-              children: [Colors.deepPurple, Colors.blue, Colors.green, Colors.orange, Colors.red].map((color) {
-                return GestureDetector(
-                  onTap: () {
-                    widget.onThemeChanged(ThemeMode.dark, color, widget.fontSize);
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                title: const Text('Theme Mode'),
+                trailing: DropdownButton<ThemeMode>(
+                  value: Theme.of(context).brightness == Brightness.dark ? ThemeMode.dark : ThemeMode.light,
+                  onChanged: (mode) {
+                    if (mode != null) widget.onSettingsChanged(mode: mode);
                     Navigator.pop(context);
                   },
-                  child: CircleAvatar(backgroundColor: color, radius: 15),
-                );
-              }).toList(),
-            ),
-          ],
+                  items: const [
+                    DropdownMenuItem(value: ThemeMode.light, child: Text('Light')),
+                    DropdownMenuItem(value: ThemeMode.dark, child: Text('Dark')),
+                  ],
+                ),
+              ),
+              const Divider(),
+              ListTile(
+                title: const Text('Font Size'),
+                subtitle: StatefulBuilder(
+                  builder: (context, setState) => Slider(
+                    value: widget.fontSize,
+                    min: 8,
+                    max: 24,
+                    divisions: 16,
+                    label: widget.fontSize.round().toString(),
+                    onChanged: (value) {
+                      widget.onSettingsChanged(fontSize: value);
+                    },
+                  ),
+                ),
+                trailing: Text(widget.fontSize.round().toString()),
+              ),
+              const Divider(),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Column(
+                  children: [
+                    TextField(
+                      decoration: const InputDecoration(labelText: 'Anthropic API Key'),
+                      controller: TextEditingController(text: widget.anthropicKey)..selection = TextSelection.collapsed(offset: widget.anthropicKey.length),
+                      obscureText: true,
+                      onChanged: (val) => widget.onSettingsChanged(anthropicKey: val),
+                    ),
+                    TextField(
+                      decoration: const InputDecoration(labelText: 'Gemini API Key'),
+                      controller: TextEditingController(text: widget.geminiKey)..selection = TextSelection.collapsed(offset: widget.geminiKey.length),
+                      obscureText: true,
+                      onChanged: (val) => widget.onSettingsChanged(geminiKey: val),
+                    ),
+                    TextField(
+                      decoration: const InputDecoration(labelText: 'OpenAI API Key'),
+                      controller: TextEditingController(text: widget.openaiKey)..selection = TextSelection.collapsed(offset: widget.openaiKey.length),
+                      obscureText: true,
+                      onChanged: (val) => widget.onSettingsChanged(openaiKey: val),
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(),
+              Wrap(
+                spacing: 8,
+                children: [Colors.deepPurple, Colors.blue, Colors.green, Colors.orange, Colors.red].map((color) {
+                  return GestureDetector(
+                    onTap: () {
+                      widget.onSettingsChanged(color: color);
+                      Navigator.pop(context);
+                    },
+                    child: CircleAvatar(backgroundColor: color, radius: 15),
+                  );
+                }).toList(),
+              ),
+            ],
+          ),
         ),
       ),
     );

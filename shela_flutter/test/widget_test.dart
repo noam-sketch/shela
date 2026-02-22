@@ -24,7 +24,10 @@ void main() {
     await tester.pumpWidget(MaterialApp(
       home: IdeWorkspace(
         fontSize: 13.0,
-        onThemeChanged: (mode, color, size) {},
+        anthropicKey: '',
+        geminiKey: '',
+        openaiKey: '',
+        onSettingsChanged: ({mode, color, fontSize, anthropicKey, geminiKey, openaiKey}) {},
       ),
     ));
 
