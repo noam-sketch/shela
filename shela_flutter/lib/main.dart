@@ -43,12 +43,14 @@ class _ShelaAppState extends State<ShelaApp> {
       themeMode: _themeMode,
       theme: ThemeData(
         brightness: Brightness.light,
+        fontFamily: 'Alef',
         primaryColor: _primaryColor,
         colorScheme: ColorScheme.fromSeed(seedColor: _primaryColor, brightness: Brightness.light),
         useMaterial3: true,
       ),
       darkTheme: ThemeData(
         brightness: Brightness.dark,
+        fontFamily: 'Alef',
         primaryColor: _primaryColor,
         colorScheme: ColorScheme.fromSeed(seedColor: _primaryColor, brightness: Brightness.dark),
         useMaterial3: true,
