@@ -1,7 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:shela_flutter/main.dart';
 import 'package:shela_flutter/models.dart';
 import 'package:path/path.dart' as p;
 import 'package:xterm/xterm.dart';
@@ -60,7 +59,9 @@ void main() {
          // Create a new file briefly to trigger the watcher event, then delete it before read
          File(p.join(tempDir.path, 'test2.py')).writeAsStringSync('dummy');
          doc.initWatcher(); // Re-init watcher 
-       } catch (e) {}
+       } catch (e) {
+         // ignore: empty_catches
+       }
 
        doc.dispose();
        tempDir.deleteSync(recursive: true);

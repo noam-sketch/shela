@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:flutter/widgets.dart';
 import 'package:path/path.dart' as p;
 import 'package:xterm/xterm.dart';
 import 'package:flutter_pty/flutter_pty.dart';

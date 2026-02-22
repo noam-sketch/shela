@@ -87,35 +87,58 @@ class _ShelaAppState extends State<ShelaApp> {
 
   Future<void> _fetchGeminiModels() async {
     try {
-      final res = await Process.run('curl', ['-s', 'https://generativelanguage.googleapis.com/v1beta/models?key=$_geminiKey']);
-      final data = json.decode(res.stdout);
-      setState(() {
-        _geminiModels = (data['models'] as List).map((m) => m['name'] as String).where((n) => n.contains('gemini')).toList();
-      });
+      final client = HttpClient();
+      final request = await client.getUrl(Uri.parse('https://generativelanguage.googleapis.com/v1beta/models?key=$_geminiKey'));
+      final response = await request.close();
+      if (response.statusCode == 200) {
+        final jsonStr = await response.transform(utf8.decoder).join();
+        final data = json.decode(jsonStr);
+        if (mounted) {
+          setState(() {
+            _geminiModels = (data['models'] as List).map((m) => m['name'] as String).where((n) => n.contains('gemini')).toList();
+          });
+        }
+      }
+      client.close();
     } catch (e) { debugPrint('Error fetching Gemini models: $e'); }
   }
 
   Future<void> _fetchAnthropicModels() async {
     try {
-      final res = await Process.run('curl', [
-        '-s', 'https://api.anthropic.com/v1/models',
-        '-H', 'x-api-key: $_anthropicKey',
-        '-H', 'anthropic-version: 2023-06-01',
-      ]);
-      final data = json.decode(res.stdout);
-      setState(() {
-        _anthropicModels = (data['data'] as List).map((m) => m['id'] as String).toList();
-      });
+      final client = HttpClient();
+      final request = await client.getUrl(Uri.parse('https://api.anthropic.com/v1/models'));
+      request.headers.add('x-api-key', _anthropicKey);
+      request.headers.add('anthropic-version', '2023-06-01');
+      final response = await request.close();
+      if (response.statusCode == 200) {
+        final jsonStr = await response.transform(utf8.decoder).join();
+        final data = json.decode(jsonStr);
+        if (mounted) {
+          setState(() {
+            _anthropicModels = (data['data'] as List).map((m) => m['id'] as String).toList();
+          });
+        }
+      }
+      client.close();
     } catch (e) { debugPrint('Error fetching Anthropic models: $e'); }
   }
 
   Future<void> _fetchOpenaiModels() async {
     try {
-      final res = await Process.run('curl', ['-s', 'https://api.openai.com/v1/models', '-H', 'Authorization: Bearer $_openaiKey']);
-      final data = json.decode(res.stdout);
-      setState(() {
-        _openaiModels = (data['data'] as List).map((m) => m['id'] as String).where((id) => id.contains('gpt') || id.contains('o1') || id.contains('o3')).toList();
-      });
+      final client = HttpClient();
+      final request = await client.getUrl(Uri.parse('https://api.openai.com/v1/models'));
+      request.headers.add('Authorization', 'Bearer $_openaiKey');
+      final response = await request.close();
+      if (response.statusCode == 200) {
+        final jsonStr = await response.transform(utf8.decoder).join();
+        final data = json.decode(jsonStr);
+        if (mounted) {
+          setState(() {
+            _openaiModels = (data['data'] as List).map((m) => m['id'] as String).where((id) => id.contains('gpt') || id.contains('o1') || id.contains('o3')).toList();
+          });
+        }
+      }
+      client.close();
     } catch (e) { debugPrint('Error fetching OpenAI models: $e'); }
   }
 
