@@ -85,10 +85,27 @@ class DuoUI:
 
 ui = DuoUI()
 
-def run_anthropic_api(system_prompt, message_content, label, color_code):
-    api_key = os.environ.get("ANTHROPIC_API_KEY")
+def load_keys_from_shela():
+    """Authoritatively loads API keys from Shela's local storage."""
+    config_path = os.path.expanduser("~/.local/share/com.example.shela/shared_preferences.json")
+    if not os.path.exists(config_path):
+        return {}
+    
+    try:
+        with open(config_path, "r") as f:
+            data = json.load(f)
+            return {
+                "ANTHROPIC_API_KEY": data.get("flutter.anthropicKey"),
+                "GEMINI_API_KEY": data.get("flutter.geminiKey"),
+                "OPENAI_API_KEY": data.get("flutter.openaiKey")
+            }
+    except Exception:
+        return {}
+
+def run_anthropic_api(system_prompt, message_content, label, color_code, keys):
+    api_key = keys.get("ANTHROPIC_API_KEY")
     if not api_key:
-        print(f"\n\x1b[1;31m[Error] {label}: ANTHROPIC_API_KEY not found.\x1b[0m")
+        print(f"\n\x1b[1;31m[Error] {label}: ANTHROPIC_API_KEY not found in Shela Settings.\x1b[0m")
         return "Error: Missing API Key"
     print(f"\n\x1b[1;{color_code}m--- {label.upper()} (Anthropic API) --- \x1b[0m")
     ui.start(label)
@@ -101,10 +118,10 @@ def run_anthropic_api(system_prompt, message_content, label, color_code):
     cmd = ["curl", "-s", "https://api.anthropic.com/v1/messages", "-H", "content-type: application/json", "-H", f"x-api-key: {api_key}", "-H", "anthropic-version: 2023-06-01", "-d", json.dumps(payload)]
     return _execute_curl(cmd)
 
-def run_gemini_api(system_prompt, message_content, label, color_code):
-    api_key = os.environ.get("GEMINI_API_KEY")
+def run_gemini_api(system_prompt, message_content, label, color_code, keys):
+    api_key = keys.get("GEMINI_API_KEY")
     if not api_key:
-        print(f"\n\x1b[1;31m[Error] {label}: GEMINI_API_KEY not found.\x1b[0m")
+        print(f"\n\x1b[1;31m[Error] {label}: GEMINI_API_KEY not found in Shela Settings.\x1b[0m")
         return "Error: Missing API Key"
     print(f"\n\x1b[1;{color_code}m--- {label.upper()} (Gemini API) --- \x1b[0m")
     ui.start(label)
@@ -116,10 +133,10 @@ def run_gemini_api(system_prompt, message_content, label, color_code):
     cmd = ["curl", "-s", "-X", "POST", url, "-H", "Content-Type: application/json", "-d", json.dumps(payload)]
     return _execute_curl(cmd, provider="google")
 
-def run_openai_api(system_prompt, message_content, label, color_code):
-    api_key = os.environ.get("OPENAI_API_KEY")
+def run_openai_api(system_prompt, message_content, label, color_code, keys):
+    api_key = keys.get("OPENAI_API_KEY")
     if not api_key:
-        print(f"\n\x1b[1;31m[Error] {label}: OPENAI_API_KEY not found.\x1b[0m")
+        print(f"\n\x1b[1;31m[Error] {label}: OPENAI_API_KEY not found in Shela Settings.\x1b[0m")
         return "Error: Missing API Key"
     print(f"\n\x1b[1;{color_code}m--- {label.upper()} (OpenAI API) --- \x1b[0m")
     ui.start(label)
@@ -181,18 +198,16 @@ def main():
     if not os.path.exists(state_path):
         with open(state_path, "w") as f: f.write("# Duo Session State\n")
 
-    # API Key check
-    keys = {
-        "ANTHROPIC_API_KEY": os.environ.get("ANTHROPIC_API_KEY"),
-        "GEMINI_API_KEY": os.environ.get("GEMINI_API_KEY"),
-        "OPENAI_API_KEY": os.environ.get("OPENAI_API_KEY")
-    }
-    missing = [k for k, v in keys.items() if not v]
+    # Authoritatively load keys from Shela storage
+    current_keys = load_keys_from_shela()
+    missing = [k for k in ["ANTHROPIC_API_KEY", "GEMINI_API_KEY", "OPENAI_API_KEY"] if not current_keys.get(k)]
     
     print(f"\n\x1b[1;33m[Shela Duo] Collaborative Multi-Agent Session Active.\x1b[0m")
     if missing:
-        print(f"\x1b[1;31mWarning: Missing keys in environment: {', '.join(missing)}\x1b[0m")
-        print(f"\x1b[1;33mEnsure you launch Duo from within Shela or export your keys manually.\x1b[0m")
+        print(f"\x1b[1;31mWarning: Missing keys in Shela Settings: {', '.join(missing)}\x1b[0m")
+        print(f"\x1b[1;33mOpen Shela IDE > Settings to configure your API keys.\x1b[0m")
+    else:
+        print(f"\x1b[1;32mKeys loaded successfully from Shela configuration.\x1b[0m")
     
     print(f"\x1b[1;33mFramework: RAZIEL (Gemini) | BETZALEL (Claude) | LOKI (Codex)\x1b[0m")
 
@@ -225,19 +240,19 @@ def main():
         # RAZIEL Turn
         raziel_sys = f"STYLE_GUIDE: {raziel_guide}\n\nINSTRUCTIONS: {base_instructions}"
         raziel_msg = f"Respond as {DELIMITER_GEMINI}. CURRENT_STATE:\n{state}\nPLAN:\n{plan}\nNEW_INPUT (from {DELIMITER_CARBON}): {user_input}\n"
-        raziel_out = run_gemini_api(raziel_sys, raziel_msg, "Raziel", "35")
+        raziel_out = run_gemini_api(raziel_sys, raziel_msg, "Raziel", "35", current_keys)
         with open(state_path, "a") as f: f.write(f"\n{DELIMITER_GEMINI}\n{raziel_out}\n")
 
         # BETZALEL Turn
         betzalel_sys = f"ARCHITECTURAL_GUIDE: {betzalel_guide}\n\nINSTRUCTIONS: {base_instructions}"
         betzalel_msg = f"Respond as {DELIMITER_CLAUDE}. CURRENT_STATE:\n{state}\nPLAN:\n{plan}\nLAST_UPDATE: {raziel_out}\n"
-        betzalel_out = run_anthropic_api(betzalel_sys, betzalel_msg, "Betzalel", "36")
+        betzalel_out = run_anthropic_api(betzalel_sys, betzalel_msg, "Betzalel", "36", current_keys)
         with open(state_path, "a") as f: f.write(f"\n{DELIMITER_CLAUDE}\n{betzalel_out}\n")
 
         # LOKI Turn
         loki_sys = f"CREATIVE_GUIDE: {loki_guide}\n\nINSTRUCTIONS: {base_instructions}"
         loki_msg = f"Respond as {DELIMITER_CODEX}. CURRENT_STATE:\n{state}\nPLAN:\n{plan}\nPREVIOUS_INPUT: {betzalel_out}\n"
-        loki_out = run_openai_api(loki_sys, loki_msg, "Loki", "31")
+        loki_out = run_openai_api(loki_sys, loki_msg, "Loki", "31", current_keys)
         with open(state_path, "a") as f: f.write(f"\n{DELIMITER_CODEX}\n{loki_out}\n")
 
         time.sleep(0.1)
