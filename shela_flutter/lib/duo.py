@@ -96,7 +96,7 @@ class DuoUI:
 
 ui = DuoUI()
 
-def load_keys_from_shela():
+def load_settings_from_shela():
     config_path = os.path.expanduser("~/.local/share/com.example.shela/shared_preferences.json")
     if not os.path.exists(config_path): return {}
     try:
@@ -105,7 +105,10 @@ def load_keys_from_shela():
             return {
                 "ANTHROPIC_API_KEY": data.get("flutter.anthropicKey"),
                 "GEMINI_API_KEY": data.get("flutter.geminiKey"),
-                "OPENAI_API_KEY": data.get("flutter.openaiKey")
+                "OPENAI_API_KEY": data.get("flutter.openaiKey"),
+                "ANTHROPIC_MODEL": data.get("flutter.selectedAnthropicModel"),
+                "GEMINI_MODEL": data.get("flutter.selectedGeminiModel"),
+                "OPENAI_MODEL": data.get("flutter.selectedOpenaiModel")
             }
     except Exception: return {}
 
@@ -225,14 +228,21 @@ def main():
     if not os.path.exists(state_path):
         with open(state_path, "w") as f: f.write("# Duo Session State\n")
 
-    shela_keys = load_keys_from_shela()
-    anthropic_key = args.anthropic_key or os.environ.get("ANTHROPIC_API_KEY") or shela_keys.get("ANTHROPIC_API_KEY")
-    gemini_key = args.gemini_key or os.environ.get("GEMINI_API_KEY") or shela_keys.get("GEMINI_API_KEY")
-    openai_key = args.openai_key or os.environ.get("OPENAI_API_KEY") or shela_keys.get("OPENAI_API_KEY")
+    shela_settings = load_settings_from_shela()
+    anthropic_key = args.anthropic_key or os.environ.get("ANTHROPIC_API_KEY") or shela_settings.get("ANTHROPIC_API_KEY")
+    gemini_key = args.gemini_key or os.environ.get("GEMINI_API_KEY") or shela_settings.get("GEMINI_API_KEY")
+    openai_key = args.openai_key or os.environ.get("OPENAI_API_KEY") or shela_settings.get("OPENAI_API_KEY")
+    
+    anthropic_model = args.anthropic_model or os.environ.get("ANTHROPIC_MODEL") or shela_settings.get("ANTHROPIC_MODEL") or "claude-3-5-sonnet-latest"
+    gemini_model = args.gemini_model or os.environ.get("GEMINI_MODEL") or shela_settings.get("GEMINI_MODEL") or "gemini-1.5-flash"
+    openai_model = args.openai_model or os.environ.get("OPENAI_MODEL") or shela_settings.get("OPENAI_MODEL") or "gpt-4o"
 
     print(f"\n\x1b[1;33m[Shela Duo] Collaborative Multi-Agent Session Active.\x1b[0m")
     print(f"\x1b[1;35m[Asynchronous Concurrent Multiplexing Enabled]\x1b[0m")
     print(f"\x1b[1;33mFramework: RAZIEL (Gemini) | BETZALEL (Claude) | LOKI (Codex)\x1b[0m")
+    
+    # Just output what we settled on for debugging/transparency
+    print(f"\x1b[1;34mModels: {gemini_model} | {anthropic_model} | {openai_model}\x1b[0m")
 
     raziel_guide = ""
     if os.path.exists(GEMINI_GUIDE):
@@ -255,7 +265,7 @@ def main():
 
     while True:
         # Check if compression is needed
-        compress_state_file(state_path, betzalel_guide, base_instructions, anthropic_key, args.anthropic_model)
+        compress_state_file(state_path, betzalel_guide, base_instructions, anthropic_key, anthropic_model)
 
         with open(state_path, "r") as f: state = f.read()
         with open(brainstorm_file, "r") as f: plan = f.read()
@@ -275,15 +285,15 @@ def main():
 
         # Execute Raziel and Loki concurrently
         with concurrent.futures.ThreadPoolExecutor() as executor:
-            future_raziel = executor.submit(run_gemini_api, raziel_sys, raziel_msg, "Raziel", "35", gemini_key, args.gemini_model, False)
-            future_loki = executor.submit(run_openai_api, loki_sys, loki_msg, "Loki", "31", openai_key, args.openai_model, False)
+            future_raziel = executor.submit(run_gemini_api, raziel_sys, raziel_msg, "Raziel", "35", gemini_key, gemini_model, False)
+            future_loki = executor.submit(run_openai_api, loki_sys, loki_msg, "Loki", "31", openai_key, openai_model, False)
 
             raziel_out = future_raziel.result()
             loki_out = future_loki.result()
 
         # Print their outputs
-        print(f"\n\x1b[1;35m[RAZIEL ({args.gemini_model})]\x1b[0m\n{raziel_out}")
-        print(f"\n\x1b[1;31m[LOKI ({args.openai_model})]\x1b[0m\n{loki_out}")
+        print(f"\n\x1b[1;35m[RAZIEL ({gemini_model})]\x1b[0m\n{raziel_out}")
+        print(f"\n\x1b[1;31m[LOKI ({openai_model})]\x1b[0m\n{loki_out}")
 
         with open(state_path, "a") as f: 
             f.write(f"\n{DELIMITER_RAZIEL}\n{raziel_out}\n")
@@ -292,7 +302,7 @@ def main():
         # BETZALEL Turn (Synthesis)
         betzalel_sys = f"ARCHITECTURAL_GUIDE:\n{betzalel_guide}\n\nINSTRUCTIONS:\n{base_instructions}"
         betzalel_msg = f"Respond as {DELIMITER_BETZALEL}. CURRENT_STATE:\n{state}\nPLAN:\n{plan}\nRAZIEL_ANALYSIS: {raziel_out}\nLOKI_TRANSFORMATION: {loki_out}\nSYNTHESIZE BOTH INPUTS.\n"
-        betzalel_out = run_anthropic_api(betzalel_sys, betzalel_msg, "Betzalel", "36", anthropic_key, args.anthropic_model, True)
+        betzalel_out = run_anthropic_api(betzalel_sys, betzalel_msg, "Betzalel", "36", anthropic_key, anthropic_model, True)
         
         with open(state_path, "a") as f: f.write(f"\n{DELIMITER_BETZALEL}\n{betzalel_out}\n")
 
