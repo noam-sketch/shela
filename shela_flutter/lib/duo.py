@@ -231,6 +231,7 @@ def main():
     parser.add_argument("--gemini-key")
     parser.add_argument("--openai-key")
     parser.add_argument("--carbon-id", default="")
+    parser.add_argument("--collaborators", default="")
     args = parser.parse_args()
 
     global DELIMITER_CARBON
@@ -245,7 +246,10 @@ def main():
         with open(brainstorm_file, "w") as f: f.write("# Project Brainstorm\n")
     state_path = os.path.join(cwd, STATE_FILE)
     if not os.path.exists(state_path):
-        with open(state_path, "w") as f: f.write("# Duo Session State\n")
+        header = f"# Duo Session State\n"
+        if args.collaborators:
+            header += f"\n**Collaborators:** {args.collaborators}\n"
+        with open(state_path, "w") as f: f.write(header)
 
     shela_settings = load_settings_from_shela()
     anthropic_key = args.anthropic_key or os.environ.get("ANTHROPIC_API_KEY") or shela_settings.get("ANTHROPIC_API_KEY")
