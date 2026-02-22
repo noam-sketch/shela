@@ -805,6 +805,9 @@ class _IdeWorkspaceState extends State<IdeWorkspace> {
           focusNode: focusNode,
           autofocus: focusNode != null,
           backgroundOpacity: 0.7,
+          onTapUp: (details, offset) {
+            focusNode?.requestFocus();
+          },
           textStyle: TerminalStyle(
             fontSize: widget.fontSize,
             fontFamily: GoogleFonts.firaCode().fontFamily ?? 'monospace',
