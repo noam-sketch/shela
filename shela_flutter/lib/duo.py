@@ -62,7 +62,6 @@ class DuoUI:
 
     def _spin(self):
         while not self.stop_spinner.is_set():
-            # Clear line and print spinner + tip
             sys.stdout.write(f"\r\x1b[1;34m{next(self.spinner)} {self._current_tip}\x1b[0m")
             sys.stdout.flush()
             time.sleep(0.1)
@@ -70,18 +69,12 @@ class DuoUI:
         sys.stdout.flush()
 
     def start(self, label):
-        # We ignore the label and pick a random tip from the knowledge base
         self._current_tip = random.choice(KNOWLEDGE_BASE)
         if not self._is_running:
             self.stop_spinner.clear()
             self._is_running = True
             self._spinner_thread = threading.Thread(target=self._spin, daemon=True)
             self._spinner_thread.start()
-
-    def update(self, label):
-        # Occasionally rotate the tip even during the same stream
-        if random.random() < 0.05:
-            self._current_tip = random.choice(KNOWLEDGE_BASE)
 
     def stop(self):
         if self._is_running:
@@ -94,104 +87,62 @@ ui = DuoUI()
 
 def run_anthropic_api(system_prompt, message_content, label, color_code):
     api_key = os.environ.get("ANTHROPIC_API_KEY")
-    if not api_key:
-        print(f"\n\x1b[1;31mError: ANTHROPIC_API_KEY not found in environment.\x1b[0m")
-        return "Error: Missing API Key"
-
-    print(f"\n\x1b[1;{color_code}m--- {label.upper()} (API) --- \x1b[0m")
-    ui.start(f"{label} is connecting to Anthropic")
-
+    if not api_key: return f"Error: Missing ANTHROPIC_API_KEY"
+    print(f"\n\x1b[1;{color_code}m--- {label.upper()} (Anthropic API) --- \x1b[0m")
+    ui.start(label)
     payload = {
-        "model": "claude-3-5-sonnet-20241022",
+        "model": "claude-3-5-sonnet-latest",
         "max_tokens": 4096,
         "system": system_prompt,
+        "messages": [{"role": "user", "content": message_content}]
+    }
+    cmd = ["curl", "-s", "https://api.anthropic.com/v1/messages", "-H", "content-type: application/json", "-H", f"x-api-key: {api_key}", "-H", "anthropic-version: 2023-06-01", "-d", json.dumps(payload)]
+    return _execute_curl(cmd)
+
+def run_gemini_api(system_prompt, message_content, label, color_code):
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key: return f"Error: Missing GEMINI_API_KEY"
+    print(f"\n\x1b[1;{color_code}m--- {label.upper()} (Gemini API) --- \x1b[0m")
+    ui.start(label)
+    payload = {
+        "contents": [{"parts": [{"text": f"SYSTEM_INSTRUCTIONS: {system_prompt}\n\nUSER_MESSAGE: {message_content}"}]}]
+    }
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key={api_key}"
+    cmd = ["curl", "-s", "-X", "POST", url, "-H", "Content-Type: application/json", "-d", json.dumps(payload)]
+    return _execute_curl(cmd, provider="google")
+
+def run_openai_api(system_prompt, message_content, label, color_code):
+    api_key = os.environ.get("OPENAI_API_KEY")
+    if not api_key: return f"Error: Missing OPENAI_API_KEY"
+    print(f"\n\x1b[1;{color_code}m--- {label.upper()} (OpenAI API) --- \x1b[0m")
+    ui.start(label)
+    payload = {
+        "model": "o3-mini",
         "messages": [
+            {"role": "developer", "content": system_prompt},
             {"role": "user", "content": message_content}
         ]
     }
+    cmd = ["curl", "-s", "https://api.openai.com/v1/chat/completions", "-H", "Content-Type: application/json", "-H", f"Authorization: Bearer {api_key}", "-d", json.dumps(payload)]
+    return _execute_curl(cmd, provider="openai")
 
-    cmd = [
-        "curl", "-s", "https://api.anthropic.com/v1/messages",
-        "-H", "content-type: application/json",
-        "-H", f"x-api-key: {api_key}",
-        "-H", "anthropic-version: 2023-06-01",
-        "-d", json.dumps(payload)
-    ]
-
+def _execute_curl(cmd, provider="anthropic"):
     try:
         process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         stdout, stderr = process.communicate()
         ui.stop()
-
-        if process.returncode != 0:
-            print(f"\x1b[1;31mCurl Error: {stderr}\x1b[0m")
-            return f"Error: API Request failed"
-
-        response = json.loads(stdout)
-        if "content" in response:
-            text = response["content"][0]["text"]
-            # Stream the text to console for the user to see
-            for char in text:
-                sys.stdout.write(char)
-                sys.stdout.flush()
-                time.sleep(0.001)
-            print()
-            return text
-        else:
-            print(f"\x1b[1;31mAPI Error: {json.dumps(response, indent=2)}\x1b[0m")
-            return "Error: Unexpected API response structure"
+        if process.returncode != 0: return f"Error: {stderr}"
+        res = json.loads(stdout)
+        if provider == "anthropic": text = res["content"][0]["text"]
+        elif provider == "google": text = res["candidates"][0]["content"]["parts"][0]["text"]
+        elif provider == "openai": text = res["choices"][0]["message"]["content"]
+        
+        for char in text:
+            sys.stdout.write(char); sys.stdout.flush(); time.sleep(0.001)
+        print()
+        return text
     except Exception as e:
-        ui.stop()
-        print(f"\x1b[1;31mException during API call: {e}\x1b[0m")
-        return f"Error: {e}"
-
-def run_agent_stream(cmd_list, label, color_code, is_pty=False):
-    print(f"\n\x1b[1;{color_code}m--- {label.upper()} --- \x1b[0m")
-    ui.start(f"{label} is initializing")
-    
-    output = []
-    
-    if is_pty:
-        old_settings = termios.tcgetattr(sys.stdin)
-        try:
-            pid, fd = pty.fork()
-            if pid == 0: os.execvp(cmd_list[0], cmd_list)
-            tty.setraw(sys.stdin.fileno())
-            while True:
-                r, w, e = select.select([fd, sys.stdin], [], [])
-                if fd in r:
-                    try:
-                        data = os.read(fd, 1024).decode(errors='ignore')
-                    except OSError as e:
-                        if e.errno == 5: break
-                        raise e
-                    if not data: break
-                    ui.stop()
-                    sys.stdout.write(data)
-                    sys.stdout.flush()
-                    output.append(data)
-                    ui.start(label) # Resume spinner with possibly new tip
-                if sys.stdin in r:
-                    os.write(fd, os.read(sys.stdin.fileno(), 1024))
-        finally:
-            termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
-            try: os.close(fd)
-            except: pass
-    else:
-        process = subprocess.Popen(cmd_list, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
-        while True:
-            line = process.stdout.readline()
-            if not line and process.poll() is not None: break
-            if line:
-                ui.stop()
-                sys.stdout.write(line)
-                sys.stdout.flush()
-                output.append(line)
-                ui.start(label)
-        process.stdout.close()
-    
-    ui.stop()
-    return "".join(output)
+        ui.stop(); return f"Error: {e}"
 
 def main():
     cwd = os.getcwd()
@@ -214,7 +165,7 @@ def main():
     loki_guide = load_guide(LOKI_GUIDE, "Loki")
 
     print(f"\n\x1b[1;33m[Shela Duo] Collaborative Multi-Agent Session Active.\x1b[0m")
-    print(f"\x1b[1;33mFramework: RAZIEL (Precision) | BETZALEL (Structure) | LOKI (Transformation)\x1b[0m")
+    print(f"\x1b[1;33mFramework: RAZIEL (Gemini) | BETZALEL (Claude) | LOKI (Codex)\x1b[0m")
 
     base_instructions = (
         f"You are part of a multi-agent social-production circle. Adhere to these protocols:\n"
@@ -234,32 +185,21 @@ def main():
         with open(state_path, "a") as f: f.write(f"\n{DELIMITER_CARBON}\n{user_input}\n")
 
         # RAZIEL Turn
-        raziel_prompt = (
-            f"STYLE_GUIDE: {raziel_guide}\n\n"
-            f"INSTRUCTIONS: {base_instructions}\n"
-            f"Respond as {DELIMITER_GEMINI}. Task: Contribute to the project state.\n"
-            f"CURRENT_STATE:\n{state}\nPLAN:\n{plan}\nNEW_INPUT (from {DELIMITER_CARBON}): {user_input}\n"
-        )
-        raziel_out = run_agent_stream(["gemini", "-p", raziel_prompt, "-o", "text"], "Raziel", "35")
+        raziel_sys = f"STYLE_GUIDE: {raziel_guide}\n\nINSTRUCTIONS: {base_instructions}"
+        raziel_msg = f"Respond as {DELIMITER_GEMINI}. CURRENT_STATE:\n{state}\nPLAN:\n{plan}\nNEW_INPUT (from {DELIMITER_CARBON}): {user_input}\n"
+        raziel_out = run_gemini_api(raziel_sys, raziel_msg, "Raziel", "35")
         with open(state_path, "a") as f: f.write(f"\n{DELIMITER_GEMINI}\n{raziel_out}\n")
 
-        # BETZALEL Turn (Direct API)
+        # BETZALEL Turn
         betzalel_sys = f"ARCHITECTURAL_GUIDE: {betzalel_guide}\n\nINSTRUCTIONS: {base_instructions}"
-        betzalel_msg = (
-            f"Respond as {DELIMITER_CLAUDE}. Task: Review structure and suggest changes.\n"
-            f"CURRENT_STATE:\n{state}\nPLAN:\n{plan}\nLAST_UPDATE: {raziel_out}\n"
-        )
+        betzalel_msg = f"Respond as {DELIMITER_CLAUDE}. CURRENT_STATE:\n{state}\nPLAN:\n{plan}\nLAST_UPDATE: {raziel_out}\n"
         betzalel_out = run_anthropic_api(betzalel_sys, betzalel_msg, "Betzalel", "36")
         with open(state_path, "a") as f: f.write(f"\n{DELIMITER_CLAUDE}\n{betzalel_out}\n")
 
         # LOKI Turn
-        loki_prompt = (
-            f"CREATIVE_GUIDE: {loki_guide}\n\n"
-            f"INSTRUCTIONS: {base_instructions}\n"
-            f"Respond as {DELIMITER_CODEX}. Task: Transform and push boundaries.\n"
-            f"CURRENT_STATE:\n{state}\nPLAN:\n{plan}\nPREVIOUS_INPUT: {betzalel_out}\n"
-        )
-        loki_out = run_agent_stream(["codex", loki_prompt], "Loki", "31", is_pty=True)
+        loki_sys = f"CREATIVE_GUIDE: {loki_guide}\n\nINSTRUCTIONS: {base_instructions}"
+        loki_msg = f"Respond as {DELIMITER_CODEX}. CURRENT_STATE:\n{state}\nPLAN:\n{plan}\nPREVIOUS_INPUT: {betzalel_out}\n"
+        loki_out = run_openai_api(loki_sys, loki_msg, "Loki", "31")
         with open(state_path, "a") as f: f.write(f"\n{DELIMITER_CODEX}\n{loki_out}\n")
 
         time.sleep(0.1)
