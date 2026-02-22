@@ -533,11 +533,20 @@ Shapeshifter, Catalyst, and Master of Narrative Inversion.
       case 'claude':
         command = 'npm install -g @anthropic-ai/claude-code\n';
         break;
+      case 'codex':
+        command = 'npm install -g codex-cli\n';
+        break;
       case 'all':
-        command = 'echo "Installing all dependencies..." && '
+        command = 'echo "Checking for npm..." && '
+            'if ! command -v npm >/dev/null 2>&1; then '
+            '  echo "Error: npm not found. Please install Node.js and npm for your system (e.g., sudo apt install nodejs npm)." && '
+            '  exit 1; '
+            'fi && '
+            'echo "Installing all dependencies..." && '
             'npm install -g @google/gemini-cli && '
             'npm install -g firebase-tools && '
             'npm install -g @anthropic-ai/claude-code && '
+            'npm install -g codex-cli && '
             'echo "Installing GCloud SDK..." && '
             'curl -sSL https://sdk.cloud.google.com | bash\n';
         break;
@@ -650,7 +659,7 @@ Shapeshifter, Catalyst, and Master of Narrative Inversion.
           child: Scaffold(
             appBar: AppBar(
               title: const Text('Shela IDE • Terminal & Duo AI'),
-              backgroundColor: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5),
+              backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
               leading: PopupMenuButton<String>(
                 icon: const Icon(Icons.menu),
                 onSelected: (value) {
@@ -704,7 +713,7 @@ Shapeshifter, Catalyst, and Master of Narrative Inversion.
                       child: Column(
                         children: [
                           Container(
-                            color: Theme.of(context).colorScheme.surfaceVariant,
+                            color: Theme.of(context).colorScheme.surfaceContainerHighest,
                             child: Row(
                               children: [
                                 Expanded(
@@ -755,7 +764,7 @@ Shapeshifter, Catalyst, and Master of Narrative Inversion.
                               ),
                             ),
                             Container(
-                              color: Theme.of(context).colorScheme.surfaceVariant,
+                              color: Theme.of(context).colorScheme.surfaceContainerHighest,
                               child: Row(
                                 children: [
                                   Expanded(
@@ -844,7 +853,7 @@ Shapeshifter, Catalyst, and Master of Narrative Inversion.
                                   : Column(
                                       children: [
                                         Container(
-                                          color: Theme.of(context).colorScheme.surfaceVariant,
+                                          color: Theme.of(context).colorScheme.surfaceContainerHighest,
                                           child: SingleChildScrollView(
                                             scrollDirection: Axis.horizontal,
                                             child: Row(
@@ -1160,7 +1169,7 @@ class _FileBrowserState extends State<FileBrowser> {
     return Column(
       children: [
         Container(
-          color: Theme.of(context).colorScheme.surfaceVariant,
+          color: Theme.of(context).colorScheme.surfaceContainerHighest,
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
           child: Row(
             children: [
