@@ -93,11 +93,17 @@ class _ShelaAppState extends State<ShelaApp> {
   }
 
   Future<void> _fetchAnthropicModels() async {
-    // Anthropic doesn't have a public "list models" endpoint in the same way, 
-    // but we'll provide the known stable ones as a fallback if the direct check fails.
-    setState(() {
-      _anthropicModels = ['claude-3-5-sonnet-20241022', 'claude-3-5-haiku-20241022', 'claude-3-opus-20240229'];
-    });
+    try {
+      final res = await Process.run('curl', [
+        '-s', 'https://api.anthropic.com/v1/models',
+        '-H', 'x-api-key: $_anthropicKey',
+        '-H', 'anthropic-version: 2023-06-01',
+      ]);
+      final data = json.decode(res.stdout);
+      setState(() {
+        _anthropicModels = (data['data'] as List).map((m) => m['id'] as String).toList();
+      });
+    } catch (e) { debugPrint('Error fetching Anthropic models: $e'); }
   }
 
   Future<void> _fetchOpenaiModels() async {
@@ -125,7 +131,10 @@ class _ShelaAppState extends State<ShelaApp> {
       if (mode != null) _themeMode = mode;
       if (color != null) _primaryColor = color;
       if (fontSize != null) _fontSize = fontSize;
-      if (anthropicKey != null) _anthropicKey = anthropicKey;
+      if (anthropicKey != null) {
+        _anthropicKey = anthropicKey;
+        _fetchAnthropicModels();
+      }
       if (geminiKey != null) {
         _geminiKey = geminiKey;
         _fetchGeminiModels();
@@ -581,7 +590,7 @@ class _IdeWorkspaceState extends State<IdeWorkspace> {
                       onChanged: (val) => widget.onSettingsChanged(anthropicKey: val),
                     ),
                     DropdownButtonFormField<String>(
-                      value: widget.anthropicModels.contains(widget.selectedAnthropicModel) ? widget.selectedAnthropicModel : (widget.anthropicModels.isNotEmpty ? widget.anthropicModels.first : null),
+                      initialValue: widget.anthropicModels.contains(widget.selectedAnthropicModel) ? widget.selectedAnthropicModel : (widget.anthropicModels.isNotEmpty ? widget.anthropicModels.first : null),
                       decoration: const InputDecoration(labelText: 'Anthropic Model'),
                       items: widget.anthropicModels.map((m) => DropdownMenuItem(value: m, child: Text(m, style: const TextStyle(fontSize: 12)))).toList(),
                       onChanged: (val) => widget.onSettingsChanged(anthropicModel: val),
@@ -594,7 +603,7 @@ class _IdeWorkspaceState extends State<IdeWorkspace> {
                       onChanged: (val) => widget.onSettingsChanged(geminiKey: val),
                     ),
                     DropdownButtonFormField<String>(
-                      value: widget.geminiModels.contains(widget.selectedGeminiModel) ? widget.selectedGeminiModel : (widget.geminiModels.isNotEmpty ? widget.geminiModels.first : null),
+                      initialValue: widget.geminiModels.contains(widget.selectedGeminiModel) ? widget.selectedGeminiModel : (widget.geminiModels.isNotEmpty ? widget.geminiModels.first : null),
                       decoration: const InputDecoration(labelText: 'Gemini Model'),
                       items: widget.geminiModels.map((m) => DropdownMenuItem(value: m, child: Text(m, style: const TextStyle(fontSize: 12)))).toList(),
                       onChanged: (val) => widget.onSettingsChanged(geminiModel: val),
@@ -607,7 +616,7 @@ class _IdeWorkspaceState extends State<IdeWorkspace> {
                       onChanged: (val) => widget.onSettingsChanged(openaiKey: val),
                     ),
                     DropdownButtonFormField<String>(
-                      value: widget.openaiModels.contains(widget.selectedOpenaiModel) ? widget.selectedOpenaiModel : (widget.openaiModels.isNotEmpty ? widget.openaiModels.first : null),
+                      initialValue: widget.openaiModels.contains(widget.selectedOpenaiModel) ? widget.selectedOpenaiModel : (widget.openaiModels.isNotEmpty ? widget.openaiModels.first : null),
                       decoration: const InputDecoration(labelText: 'OpenAI Model'),
                       items: widget.openaiModels.map((m) => DropdownMenuItem(value: m, child: Text(m, style: const TextStyle(fontSize: 12)))).toList(),
                       onChanged: (val) => widget.onSettingsChanged(openaiModel: val),

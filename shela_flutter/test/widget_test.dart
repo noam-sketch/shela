@@ -27,7 +27,13 @@ void main() {
         anthropicKey: '',
         geminiKey: '',
         openaiKey: '',
-        onSettingsChanged: ({mode, color, fontSize, anthropicKey, geminiKey, openaiKey}) {},
+        selectedAnthropicModel: 'claude-3-5-sonnet-latest',
+        selectedGeminiModel: 'gemini-1.5-flash',
+        selectedOpenaiModel: 'gpt-4o',
+        anthropicModels: const [],
+        geminiModels: const [],
+        openaiModels: const [],
+        onSettingsChanged: ({mode, color, fontSize, anthropicKey, geminiKey, openaiKey, anthropicModel, geminiModel, openaiModel}) {},
       ),
     ));
 
