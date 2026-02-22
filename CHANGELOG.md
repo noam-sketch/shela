@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.3.0] - 2026-02-22
+
+### Added
+- **Teacher-Student AI Orchestration**: Reimagined the multi-agent loop with Mozart as the Conductor/Teacher and Raziel, Betzalel, and Loki as concurrent Students.
+- **Enhanced Hebrew & Nikod Support**: Integrated the **Heebo** font family for superior Hebrew rendering, including RTL and Nikod positioning.
+- **Window Management**: Custom title bar implementation with window controls (Minimize, Maximize, Close) and drag-to-move support.
+- **Persistent Resizable Layout**: Persistent sizing for the four-panel workspace, saved to user preferences.
+- **Improved Telemetry Resilience**: Robust handling of telemetry data with fallback to legacy formats and increased accumulation limit (5000 entries).
+- **Tabbed Terminal View**: Expanded both top and bottom panels to support multiple terminal tabs with a convenient "+" button.
+- **Expanded Cloud Integrations**: Added sections for Google Cloud, Firebase, and GitHub with common authentication and management commands.
+
+### Changed
+- **Pure Gemini Architecture**: Removed all references to OpenAI and Anthropic, migrating all agents exclusively to Google Gemini.
+- **Integrated Prompt Overlay**: Moved the prompt buffer from a separate row to a sleek, non-obscuring Column within the terminal panel.
+- **Security Updates**: Prepend `clear; ` and leading spaces to commands containing sensitive API keys to protect them from terminal logs and bash history.
+
 ## [1.2.0] - 2026-02-22
 
 ### Added

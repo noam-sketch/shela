@@ -16,6 +16,15 @@ import concurrent.futures
 import shutil
 import unicodedata
 
+try:
+    from bidi.algorithm import get_display
+except ImportError:
+    try:
+        subprocess.check_call([sys.executable, "-m", "pip", "install", "python-bidi", "--quiet", "--break-system-packages"])
+        from bidi.algorithm import get_display
+    except Exception:
+        def get_display(text): return text
+
 # Communication Config
 STATE_FILE = ".shela_duo_state.md"
 USAGE_FILE = "usage.json"
@@ -57,19 +66,29 @@ class TipsManager:
     def fetch_tips(self):
         if not self.api_key: return
         with self._lock: self._fetching = True
+        
+        system_prompt = (
+            "You are a universal polymath. Generate 50 short, fascinating paragraphs (3-4 sentences each) "
+            "ranging across ALL disciplines (physics, art, history, coding, biology, philosophy, etc.)."
+        )
+        message_content = "Provide exactly 50 paragraphs. Separate each paragraph with a double newline. Raw facts only."
+        
+        payload = {
+            "system_instruction": {"parts": [{"text": system_prompt}]},
+            "contents": [{"parts": [{"text": message_content}]}]
+        }
+        m_name = self.model if self.model.startswith("models/") else f"models/{self.model}"
+        url = f"https://generativelanguage.googleapis.com/v1beta/{m_name}:generateContent?key={self.api_key}"
+        cmd = ["curl", "-s", "-X", "POST", url, "-H", "Content-Type: application/json", "-d", "@-"]
+        
         try:
-            system_prompt = "You are a universal polymath. Generate 100 short, fascinating one-sentence tips or facts ranging across ALL disciplines."
-            message_content = "Provide exactly 100 tips, one per line. Raw facts only."
-            payload = {"system_instruction": {"parts": [{"text": system_prompt}]}, "contents": [{"parts": [{"text": message_content}]}]}
-            m_name = self.model if self.model.startswith("models/") else f"models/{self.model}"
-            url = f"https://generativelanguage.googleapis.com/v1beta/{m_name}:generateContent?key={self.api_key}"
-            cmd = ["curl", "-s", "-X", "POST", url, "-H", "Content-Type: application/json", "-d", json.dumps(payload)]
-            process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-            stdout, _ = process.communicate()
+            process = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            stdout, _ = process.communicate(input=json.dumps(payload))
             res = json.loads(stdout)
             text = res["candidates"][0]["content"]["parts"][0]["text"]
-            new_tips = [line.strip() for line in text.split('\n') if line.strip()]
-            with self._lock: self.tips.extend(new_tips)
+            new_tips = [p.strip() for p in text.split('\n\n') if p.strip()]
+            with self._lock:
+                self.tips.extend(new_tips)
         except Exception: pass
         finally:
             with self._lock: self._fetching = False
@@ -87,12 +106,13 @@ class DuoUI:
     def _spin(self):
         tick_count = 0
         while not self.stop_spinner.is_set():
-            if tick_count % 50 == 0:
-                with self._lock: self._current_tip = self.tips_manager.get_tip()
-            cols = shutil.get_terminal_size((80, 20)).columns
-            max_len = max(10, cols - 15)
-            with self._lock: display_tip = self._current_tip[:max_len]
-            sys.stdout.write(f"\r\x1b[2K\x1b[1;34m{next(self.spinner)} {display_tip}\x1b[0m")
+            if tick_count % 100 == 0:
+                with self._lock:
+                    self._current_tip = self.tips_manager.get_tip()
+                    sys.stdout.write(f"\n\x1b[1;34m[💡 Knowledge Drop]\x1b[0m\n\x1b[3m{self._current_tip}\x1b[0m\n\n")
+                    sys.stdout.flush()
+            
+            sys.stdout.write(f"\r\x1b[2K\x1b[1;34m{next(self.spinner)} Absorbing Knowledge Stream...\x1b[0m")
             sys.stdout.flush()
             time.sleep(0.1)
             tick_count += 1
@@ -139,13 +159,14 @@ def run_gemini_api(system_prompt, message_content, label, color_code, api_key, m
     payload = {"system_instruction": {"parts": [{"text": system_prompt}]}, "contents": [{"parts": [{"text": message_content}]}]}
     m_name = model if model.startswith("models/") else f"models/{model}"
     url = f"https://generativelanguage.googleapis.com/v1beta/{m_name}:generateContent?key={api_key}"
-    cmd = ["curl", "-s", "-X", "POST", url, "-H", "Content-Type: application/json", "-d", json.dumps(payload)]
-    return _execute_curl(cmd, ui_spinner, stream=stream, color_code=color_code, label=label, model=model)
+    cmd = ["curl", "-s", "-X", "POST", url, "-H", "Content-Type: application/json", "-d", "@-"]
+    res_text = _execute_curl(cmd, json.dumps(payload), ui_spinner, stream=stream, color_code=color_code, label=label, model=model)
+    return res_text
 
-def _execute_curl(cmd, ui, stream=True, color_code="0", label="unknown", model="unknown"):
+def _execute_curl(cmd, data, ui, stream=True, color_code="0", label="unknown", model="unknown"):
     try:
-        process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        stdout, _ = process.communicate()
+        process = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        stdout, _ = process.communicate(input=data)
         if ui: ui.stop()
         res = json.loads(stdout)
         if "candidates" not in res: return "Error: No candidates"
@@ -154,9 +175,12 @@ def _execute_curl(cmd, ui, stream=True, color_code="0", label="unknown", model="
         usage_str = f"In {usage.get('promptTokenCount')} | Out {usage.get('candidatesTokenCount')} | Total {usage.get('totalTokenCount')}"
         write_usage(label, "Idle", usage_str, model)
         if text:
-            # Use NFD normalization to separate combining characters (Nikod)
-            # This sometimes helps the terminal renderer position them correctly.
-            text = unicodedata.normalize('NFD', text)
+            text = unicodedata.normalize('NFC', text)
+            try: 
+                lines = text.split('\n')
+                text = '\n'.join([get_display(line) for line in lines])
+            except Exception: pass
+            
             if stream:
                 sys.stdout.write(f"\x1b[{color_code}m")
                 for char in text: sys.stdout.write(char); sys.stdout.flush(); time.sleep(0.001)
@@ -168,24 +192,32 @@ def _execute_curl(cmd, ui, stream=True, color_code="0", label="unknown", model="
         return f"Error: {e}"
 
 def execute_agent_commands(text, label, state_path):
+    global ui_spinner
     commands = re.findall(rf"{DELIMITER_COMMAND_START}(.*?){DELIMITER_COMMAND_END}", text, re.DOTALL)
     for cmd in commands:
         cmd = cmd.strip()
         if not cmd: continue
         print(f"\n\x1b[1;36m[System] Executing command for {label}:\x1b[0m\n{cmd}")
+        
+        if ui_spinner: ui_spinner.start(f"Exec:{label}")
         try:
             result = subprocess.run(cmd, shell=True, text=True, capture_output=True, timeout=60)
             output = result.stdout + result.stderr
             if not output: output = "Success."
             elif len(output) > 50000: output = output[:50000] + "\n... [Truncated] ..."
         except Exception as e: output = f"Failed: {e}"
-        with open(state_path, "a") as f: f.write(f"\n<<<SYSTEM_OUTPUT>>>\nCommand: {cmd}\nOutput:\n{output}\n")
+        finally:
+            if ui_spinner: ui_spinner.stop()
+            
+        with open(state_path, "a") as f:
+            f.write(f"\n<<<SYSTEM_OUTPUT>>>\nCommand: {cmd}\nOutput:\n{output}\n")
 
 def main():
     global ui_spinner
     parser = argparse.ArgumentParser()
     parser.add_argument("--gemini-model", default=None)
     parser.add_argument("--gemini-key")
+    parser.add_argument("--carbon-id", default="")
     args = parser.parse_args()
 
     gemini_key = args.gemini_key or os.environ.get("GEMINI_API_KEY")
@@ -209,9 +241,10 @@ def main():
     kata_steps = "1. Write Tests. 2. Lint Tests. 3. Test. 4. Implement. 5. Lint. 6. Test. 7. Refactor. 8. Lint. 9. Test. 10. Build. 11. Run."
     base_instructions = (
         f"ENVIRONMENT: Linux sandbox, full shell access (bash, git, gh, npm, python). Rooted in {cwd}.\n"
-        f"You can interact with the OS, file system, and kernel using {DELIMITER_COMMAND_START} command {DELIMITER_COMMAND_END}.\n"
+        f"COMMANDS: Execute shell commands using {DELIMITER_COMMAND_START} command {DELIMITER_COMMAND_END}.\n"
         f"KATA: Follow WTLTTILTRLTBR sequence: {kata_steps}\n"
         f"ROLES: MOZART is the TEACHER/CONDUCTOR. RAZIEL, BETZALEL, and LOKI are STUDENTS.\n"
+        f"RAZIEL'S SACRED ROLE: Raziel is an Angel. Every 'weed' (student/process/idea) has a guardian angel (Raziel) telling it to 'Grow!'.\n"
         f"FLOW: Mozart sets direction. Students respond in parallel. Mozart organizes the flow.\n"
         f"INTERVENTION: Use {DELIMITER_HULT} ONLY after a full Kata cycle (after 'Run') to wait for human feedback."
     )
@@ -223,14 +256,16 @@ def main():
         with open(state_path, "r") as f: state = f.read()
         
         if is_first_turn:
-            sys.stdout.write(f"\r\n\x1b[1;32m👤 {DELIMITER_CARBON}: \x1b[0m")
+            delim = f"<<<CARBON[{args.carbon_id}]>>>" if args.carbon_id else DELIMITER_CARBON
+            sys.stdout.write(f"\r\n\x1b[1;32m👤 {delim}: \x1b[0m")
             sys.stdout.flush()
             user_input = sys.stdin.readline().strip()
             if not user_input: continue
         else: user_input = "Continue the lesson."
             
         is_first_turn = False
-        with open(state_path, "a") as f: f.write(f"\n{DELIMITER_CARBON}\n{user_input}\n")
+        delim_to_log = f"<<<CARBON[{args.carbon_id}]>>>" if args.carbon_id else DELIMITER_CARBON
+        with open(state_path, "a") as f: f.write(f"\n{delim_to_log}\n{user_input}\n")
 
         # Teacher turn
         mozart_sys = f"MOZART_PERSONA:\n{mozart_guide}\n\nINSTRUCTIONS:\n{base_instructions}"
