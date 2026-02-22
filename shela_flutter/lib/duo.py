@@ -62,10 +62,14 @@ class DuoUI:
 
     def _spin(self):
         while not self.stop_spinner.is_set():
-            sys.stdout.write(f"\r\x1b[1;34m{next(self.spinner)} {self._current_tip}\x1b[0m")
+            # \r to start of line, \x1b[K to clear from cursor to end of line
+            # Truncate tip to 80 chars to prevent wrapping
+            display_tip = self._current_tip[:100]
+            sys.stdout.write(f"\r\x1b[K\x1b[1;34m{next(self.spinner)} {display_tip}\x1b[0m")
             sys.stdout.flush()
             time.sleep(0.1)
-        sys.stdout.write("\r" + " " * 120 + "\r")
+        # Clear the line completely when done
+        sys.stdout.write("\r\x1b[K")
         sys.stdout.flush()
 
     def start(self, label):
@@ -80,7 +84,7 @@ class DuoUI:
         if self._is_running:
             self.stop_spinner.set()
             if self._spinner_thread:
-                self._spinner_thread.join(timeout=0.2)
+                self._spinner_thread.join(timeout=0.5)
             self._is_running = False
 
 ui = DuoUI()
@@ -125,7 +129,6 @@ def run_gemini_api(system_prompt, message_content, label, color_code, keys):
         return "Error: Missing API Key"
     print(f"\n\x1b[1;{color_code}m--- {label.upper()} (Gemini API) --- \x1b[0m")
     ui.start(label)
-    # Using v1 and putting system instructions in the prompt for maximum compatibility
     payload = {
         "contents": [{"parts": [{"text": f"SYSTEM_INSTRUCTIONS: {system_prompt}\n\nUSER_MESSAGE: {message_content}"}]}]
     }
