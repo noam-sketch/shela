@@ -3,6 +3,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
 import 'package:xterm/xterm.dart';
@@ -37,6 +38,7 @@ class _ShelaAppState extends State<ShelaApp> {
   String _geminiKey = '';
   String _openaiKey = '';
   String _carbonEmail = '';
+  String _collaborators = '';
   String _selectedGeminiModel = 'models/gemini-1.5-flash';
   String _selectedAnthropicModel = 'claude-3-5-sonnet-20241022';
   String _selectedOpenaiModel = 'gpt-4o';
@@ -61,6 +63,7 @@ class _ShelaAppState extends State<ShelaApp> {
       _geminiKey = prefs.getString('geminiKey') ?? '';
       _openaiKey = prefs.getString('openaiKey') ?? '';
       _carbonEmail = prefs.getString('carbonEmail') ?? '';
+      _collaborators = prefs.getString('collaborators') ?? '';
       _selectedGeminiModel = prefs.getString('selectedGeminiModel') ?? 'models/gemini-1.5-flash';
       _selectedAnthropicModel = prefs.getString('selectedAnthropicModel') ?? 'claude-3-5-sonnet-20241022';
       _selectedOpenaiModel = prefs.getString('selectedOpenaiModel') ?? 'gpt-4o';
@@ -77,6 +80,7 @@ class _ShelaAppState extends State<ShelaApp> {
     await prefs.setString('geminiKey', _geminiKey);
     await prefs.setString('openaiKey', _openaiKey);
     await prefs.setString('carbonEmail', _carbonEmail);
+    await prefs.setString('collaborators', _collaborators);
     await prefs.setString('selectedGeminiModel', _selectedGeminiModel);
     await prefs.setString('selectedAnthropicModel', _selectedAnthropicModel);
     await prefs.setString('selectedOpenaiModel', _selectedOpenaiModel);
@@ -153,6 +157,7 @@ class _ShelaAppState extends State<ShelaApp> {
     String? geminiKey,
     String? openaiKey,
     String? carbonEmail,
+    String? collaborators,
     String? geminiModel,
     String? anthropicModel,
     String? openaiModel,
@@ -162,6 +167,7 @@ class _ShelaAppState extends State<ShelaApp> {
       if (color != null) _primaryColor = color;
       if (fontSize != null) _fontSize = fontSize;
       if (carbonEmail != null) _carbonEmail = carbonEmail;
+      if (collaborators != null) _collaborators = collaborators;
       if (anthropicKey != null) {
         _anthropicKey = anthropicKey;
         _fetchAnthropicModels();
@@ -208,6 +214,7 @@ class _ShelaAppState extends State<ShelaApp> {
         geminiKey: _geminiKey,
         openaiKey: _openaiKey,
         carbonEmail: _carbonEmail,
+        collaborators: _collaborators,
         selectedGeminiModel: _selectedGeminiModel,
         selectedAnthropicModel: _selectedAnthropicModel,
         selectedOpenaiModel: _selectedOpenaiModel,
@@ -227,6 +234,7 @@ class IdeWorkspace extends StatefulWidget {
   final String geminiKey;
   final String openaiKey;
   final String carbonEmail;
+  final String collaborators;
   final String selectedGeminiModel;
   final String selectedAnthropicModel;
   final String selectedOpenaiModel;
@@ -241,6 +249,7 @@ class IdeWorkspace extends StatefulWidget {
     String? geminiKey, 
     String? openaiKey,
     String? carbonEmail,
+    String? collaborators,
     String? geminiModel,
     String? anthropicModel,
     String? openaiModel,
@@ -254,6 +263,7 @@ class IdeWorkspace extends StatefulWidget {
     required this.geminiKey,
     required this.openaiKey,
     required this.carbonEmail,
+    required this.collaborators,
     required this.selectedGeminiModel,
     required this.selectedAnthropicModel,
     required this.selectedOpenaiModel,
@@ -531,6 +541,12 @@ class _IdeWorkspaceState extends State<IdeWorkspace> {
                     ),
                     const SizedBox(height: 16),
                     TextField(
+                      decoration: const InputDecoration(labelText: 'Collaborators (comma separated emails)'),
+                      controller: TextEditingController(text: widget.collaborators)..selection = TextSelection.collapsed(offset: widget.collaborators.length),
+                      onChanged: (val) => widget.onSettingsChanged(collaborators: val),
+                    ),
+                    const SizedBox(height: 16),
+                    TextField(
                       decoration: const InputDecoration(labelText: 'Anthropic API Key'),
                       controller: TextEditingController(text: widget.anthropicKey)..selection = TextSelection.collapsed(offset: widget.anthropicKey.length),
                       obscureText: true,
@@ -654,7 +670,8 @@ class _IdeWorkspaceState extends State<IdeWorkspace> {
           '--gemini-key "${widget.geminiKey}" '
           '--anthropic-key "${widget.anthropicKey}" '
           '--openai-key "${widget.openaiKey}" '
-          '--carbon-id "${widget.carbonEmail}"; stty echo\n';
+          '--carbon-id "${widget.carbonEmail}" '
+          '--collaborators "${widget.collaborators}"; stty echo\n';
       sessions[activeSessionIndex].pty!.write(const Utf8Encoder().convert(cmd));
     }
   }
@@ -776,8 +793,12 @@ class _IdeWorkspaceState extends State<IdeWorkspace> {
         const SingleActivator(LogicalKeyboardKey.keyC, control: true, shift: true): () => _copyToClipboard(terminal, controller),
         const SingleActivator(LogicalKeyboardKey.keyV, control: true, shift: true): () => _pasteFromClipboard(terminal),
       },
-      child: GestureDetector(
-        onSecondaryTapDown: (details) => _showTerminalContextMenu(context, details.globalPosition, terminal, controller),
+      child: Listener(
+        onPointerDown: (event) {
+          if (event.buttons == kSecondaryButton) {
+            _showTerminalContextMenu(context, event.position, terminal, controller);
+          }
+        },
         child: TerminalView(
           terminal,
           controller: controller,
@@ -1149,6 +1170,14 @@ class CloudPanel extends StatelessWidget {
         Expanded(
           child: ListView(
             children: [
+              const ListTile(title: Text('Workspace', style: TextStyle(fontWeight: FontWeight.bold))),
+              ListTile(
+                title: const Text('Sync State (Git)'), 
+                leading: const Icon(Icons.sync), 
+                dense: true, 
+                onTap: () => onCommand('git pull --rebase && git add .shela_duo_state.md plan/BRAINSTORM.md && git commit -m "sync: Shared Duo session state" && git push')
+              ),
+              const Divider(),
               const ListTile(title: Text('Firebase', style: TextStyle(fontWeight: FontWeight.bold))),
               ListTile(title: const Text('Login'), leading: const Icon(Icons.login), dense: true, onTap: () => onCommand('firebase login')),
               ListTile(title: const Text('List Projects'), leading: const Icon(Icons.list), dense: true, onTap: () => onCommand('firebase projects:list')),
