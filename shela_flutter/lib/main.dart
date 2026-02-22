@@ -33,6 +33,13 @@ class _ShelaAppState extends State<ShelaApp> {
   String _anthropicKey = '';
   String _geminiKey = '';
   String _openaiKey = '';
+  String _selectedGeminiModel = 'models/gemini-1.5-flash';
+  String _selectedAnthropicModel = 'claude-3-5-sonnet-20241022';
+  String _selectedOpenaiModel = 'gpt-4o';
+  
+  List<String> _geminiModels = [];
+  List<String> _anthropicModels = [];
+  List<String> _openaiModels = [];
 
   @override
   void initState() {
@@ -49,7 +56,11 @@ class _ShelaAppState extends State<ShelaApp> {
       _anthropicKey = prefs.getString('anthropicKey') ?? '';
       _geminiKey = prefs.getString('geminiKey') ?? '';
       _openaiKey = prefs.getString('openaiKey') ?? '';
+      _selectedGeminiModel = prefs.getString('selectedGeminiModel') ?? 'models/gemini-1.5-flash';
+      _selectedAnthropicModel = prefs.getString('selectedAnthropicModel') ?? 'claude-3-5-sonnet-20241022';
+      _selectedOpenaiModel = prefs.getString('selectedOpenaiModel') ?? 'gpt-4o';
     });
+    _refreshAllModels();
   }
 
   Future<void> _saveSettings() async {
@@ -60,6 +71,43 @@ class _ShelaAppState extends State<ShelaApp> {
     await prefs.setString('anthropicKey', _anthropicKey);
     await prefs.setString('geminiKey', _geminiKey);
     await prefs.setString('openaiKey', _openaiKey);
+    await prefs.setString('selectedGeminiModel', _selectedGeminiModel);
+    await prefs.setString('selectedAnthropicModel', _selectedAnthropicModel);
+    await prefs.setString('selectedOpenaiModel', _selectedOpenaiModel);
+  }
+
+  Future<void> _refreshAllModels() async {
+    if (_geminiKey.isNotEmpty) _fetchGeminiModels();
+    if (_anthropicKey.isNotEmpty) _fetchAnthropicModels();
+    if (_openaiKey.isNotEmpty) _fetchOpenaiModels();
+  }
+
+  Future<void> _fetchGeminiModels() async {
+    try {
+      final res = await Process.run('curl', ['-s', 'https://generativelanguage.googleapis.com/v1beta/models?key=$_geminiKey']);
+      final data = json.decode(res.stdout);
+      setState(() {
+        _geminiModels = (data['models'] as List).map((m) => m['name'] as String).where((n) => n.contains('gemini')).toList();
+      });
+    } catch (e) { debugPrint('Error fetching Gemini models: $e'); }
+  }
+
+  Future<void> _fetchAnthropicModels() async {
+    // Anthropic doesn't have a public "list models" endpoint in the same way, 
+    // but we'll provide the known stable ones as a fallback if the direct check fails.
+    setState(() {
+      _anthropicModels = ['claude-3-5-sonnet-20241022', 'claude-3-5-haiku-20241022', 'claude-3-opus-20240229'];
+    });
+  }
+
+  Future<void> _fetchOpenaiModels() async {
+    try {
+      final res = await Process.run('curl', ['-s', 'https://api.openai.com/v1/models', '-H', 'Authorization: Bearer $_openaiKey']);
+      final data = json.decode(res.stdout);
+      setState(() {
+        _openaiModels = (data['data'] as List).map((m) => m['id'] as String).where((id) => id.contains('gpt') || id.contains('o1') || id.contains('o3')).toList();
+      });
+    } catch (e) { debugPrint('Error fetching OpenAI models: $e'); }
   }
 
   void _updateSettings({
@@ -69,14 +117,26 @@ class _ShelaAppState extends State<ShelaApp> {
     String? anthropicKey,
     String? geminiKey,
     String? openaiKey,
+    String? geminiModel,
+    String? anthropicModel,
+    String? openaiModel,
   }) {
     setState(() {
       if (mode != null) _themeMode = mode;
       if (color != null) _primaryColor = color;
       if (fontSize != null) _fontSize = fontSize;
       if (anthropicKey != null) _anthropicKey = anthropicKey;
-      if (geminiKey != null) _geminiKey = geminiKey;
-      if (openaiKey != null) _openaiKey = openaiKey;
+      if (geminiKey != null) {
+        _geminiKey = geminiKey;
+        _fetchGeminiModels();
+      }
+      if (openaiKey != null) {
+        _openaiKey = openaiKey;
+        _fetchOpenaiModels();
+      }
+      if (geminiModel != null) _selectedGeminiModel = geminiModel;
+      if (anthropicModel != null) _selectedAnthropicModel = anthropicModel;
+      if (openaiModel != null) _selectedOpenaiModel = openaiModel;
     });
     _saveSettings();
   }
@@ -107,6 +167,12 @@ class _ShelaAppState extends State<ShelaApp> {
         anthropicKey: _anthropicKey,
         geminiKey: _geminiKey,
         openaiKey: _openaiKey,
+        selectedGeminiModel: _selectedGeminiModel,
+        selectedAnthropicModel: _selectedAnthropicModel,
+        selectedOpenaiModel: _selectedOpenaiModel,
+        geminiModels: _geminiModels,
+        anthropicModels: _anthropicModels,
+        openaiModels: _openaiModels,
         onSettingsChanged: _updateSettings,
       ),
     );
@@ -215,7 +281,23 @@ class IdeWorkspace extends StatefulWidget {
   final String anthropicKey;
   final String geminiKey;
   final String openaiKey;
-  final Function({ThemeMode? mode, Color? color, double? fontSize, String? anthropicKey, String? geminiKey, String? openaiKey}) onSettingsChanged;
+  final String selectedGeminiModel;
+  final String selectedAnthropicModel;
+  final String selectedOpenaiModel;
+  final List<String> geminiModels;
+  final List<String> anthropicModels;
+  final List<String> openaiModels;
+  final Function({
+    ThemeMode? mode, 
+    Color? color, 
+    double? fontSize, 
+    String? anthropicKey, 
+    String? geminiKey, 
+    String? openaiKey,
+    String? geminiModel,
+    String? anthropicModel,
+    String? openaiModel,
+  }) onSettingsChanged;
   
   const IdeWorkspace({
     super.key, 
@@ -224,6 +306,12 @@ class IdeWorkspace extends StatefulWidget {
     required this.anthropicKey,
     required this.geminiKey,
     required this.openaiKey,
+    required this.selectedGeminiModel,
+    required this.selectedAnthropicModel,
+    required this.selectedOpenaiModel,
+    required this.geminiModels,
+    required this.anthropicModels,
+    required this.openaiModels,
     required this.onSettingsChanged
   });
 
@@ -343,6 +431,9 @@ class _IdeWorkspaceState extends State<IdeWorkspace> {
       'ANTHROPIC_API_KEY': widget.anthropicKey,
       'GEMINI_API_KEY': widget.geminiKey,
       'OPENAI_API_KEY': widget.openaiKey,
+      'ANTHROPIC_MODEL': widget.selectedAnthropicModel,
+      'GEMINI_MODEL': widget.selectedGeminiModel,
+      'OPENAI_MODEL': widget.selectedOpenaiModel,
     };
   }
 
@@ -489,17 +580,37 @@ class _IdeWorkspaceState extends State<IdeWorkspace> {
                       obscureText: true,
                       onChanged: (val) => widget.onSettingsChanged(anthropicKey: val),
                     ),
+                    DropdownButtonFormField<String>(
+                      value: widget.anthropicModels.contains(widget.selectedAnthropicModel) ? widget.selectedAnthropicModel : (widget.anthropicModels.isNotEmpty ? widget.anthropicModels.first : null),
+                      decoration: const InputDecoration(labelText: 'Anthropic Model'),
+                      items: widget.anthropicModels.map((m) => DropdownMenuItem(value: m, child: Text(m, style: const TextStyle(fontSize: 12)))).toList(),
+                      onChanged: (val) => widget.onSettingsChanged(anthropicModel: val),
+                    ),
+                    const SizedBox(height: 16),
                     TextField(
                       decoration: const InputDecoration(labelText: 'Gemini API Key'),
                       controller: TextEditingController(text: widget.geminiKey)..selection = TextSelection.collapsed(offset: widget.geminiKey.length),
                       obscureText: true,
                       onChanged: (val) => widget.onSettingsChanged(geminiKey: val),
                     ),
+                    DropdownButtonFormField<String>(
+                      value: widget.geminiModels.contains(widget.selectedGeminiModel) ? widget.selectedGeminiModel : (widget.geminiModels.isNotEmpty ? widget.geminiModels.first : null),
+                      decoration: const InputDecoration(labelText: 'Gemini Model'),
+                      items: widget.geminiModels.map((m) => DropdownMenuItem(value: m, child: Text(m, style: const TextStyle(fontSize: 12)))).toList(),
+                      onChanged: (val) => widget.onSettingsChanged(geminiModel: val),
+                    ),
+                    const SizedBox(height: 16),
                     TextField(
                       decoration: const InputDecoration(labelText: 'OpenAI API Key'),
                       controller: TextEditingController(text: widget.openaiKey)..selection = TextSelection.collapsed(offset: widget.openaiKey.length),
                       obscureText: true,
                       onChanged: (val) => widget.onSettingsChanged(openaiKey: val),
+                    ),
+                    DropdownButtonFormField<String>(
+                      value: widget.openaiModels.contains(widget.selectedOpenaiModel) ? widget.selectedOpenaiModel : (widget.openaiModels.isNotEmpty ? widget.openaiModels.first : null),
+                      decoration: const InputDecoration(labelText: 'OpenAI Model'),
+                      items: widget.openaiModels.map((m) => DropdownMenuItem(value: m, child: Text(m, style: const TextStyle(fontSize: 12)))).toList(),
+                      onChanged: (val) => widget.onSettingsChanged(openaiModel: val),
                     ),
                   ],
                 ),

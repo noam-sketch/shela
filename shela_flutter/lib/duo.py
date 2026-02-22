@@ -62,13 +62,13 @@ class DuoUI:
 
     def _spin(self):
         while not self.stop_spinner.is_set():
-            # \r to start of line, \x1b[K to clear from cursor to end of line
+            # \r to start of line, \x1b[2K to clear the whole line
             display_tip = self._current_tip[:100]
-            sys.stdout.write(f"\r\x1b[K\x1b[1;34m{next(self.spinner)} {display_tip}\x1b[0m")
+            sys.stdout.write(f"\r\x1b[2K\x1b[1;34m{next(self.spinner)} {display_tip}\x1b[0m")
             sys.stdout.flush()
             time.sleep(0.1)
         # Clear the line completely when done
-        sys.stdout.write("\r\x1b[K")
+        sys.stdout.write("\r\x1b[2K\r")
         sys.stdout.flush()
 
     def start(self, label):
@@ -89,11 +89,8 @@ class DuoUI:
 ui = DuoUI()
 
 def load_keys_from_shela():
-    """Authoritatively loads API keys from Shela's local storage."""
     config_path = os.path.expanduser("~/.local/share/com.example.shela/shared_preferences.json")
-    if not os.path.exists(config_path):
-        return {}
-    
+    if not os.path.exists(config_path): return {}
     try:
         with open(config_path, "r") as f:
             data = json.load(f)
@@ -102,18 +99,16 @@ def load_keys_from_shela():
                 "GEMINI_API_KEY": data.get("flutter.geminiKey"),
                 "OPENAI_API_KEY": data.get("flutter.openaiKey")
             }
-    except Exception:
-        return {}
+    except Exception: return {}
 
 def run_anthropic_api(system_prompt, message_content, label, color_code, keys):
     api_key = keys.get("ANTHROPIC_API_KEY")
-    if not api_key:
-        print(f"\n\x1b[1;31m[Error] {label}: ANTHROPIC_API_KEY not found in Shela Settings.\x1b[0m")
-        return "Error: Missing API Key"
-    print(f"\n\x1b[1;{color_code}m--- {label.upper()} (Anthropic API) --- \x1b[0m")
+    model = os.environ.get("ANTHROPIC_MODEL", "claude-3-5-sonnet-latest")
+    if not api_key: return "Error: Missing API Key"
+    print(f"\n\x1b[1;{color_code}m--- {label.upper()} ({model}) --- \x1b[0m")
     ui.start(label)
     payload = {
-        "model": "claude-3-5-sonnet-latest",
+        "model": model,
         "max_tokens": 4096,
         "system": system_prompt,
         "messages": [{"role": "user", "content": message_content}]
@@ -123,29 +118,28 @@ def run_anthropic_api(system_prompt, message_content, label, color_code, keys):
 
 def run_gemini_api(system_prompt, message_content, label, color_code, keys):
     api_key = keys.get("GEMINI_API_KEY")
-    if not api_key:
-        print(f"\n\x1b[1;31m[Error] {label}: GEMINI_API_KEY not found in Shela Settings.\x1b[0m")
-        return "Error: Missing API Key"
-    print(f"\n\x1b[1;{color_code}m--- {label.upper()} (Gemini API) --- \x1b[0m")
+    model = os.environ.get("GEMINI_MODEL", "gemini-1.5-flash")
+    if not api_key: return "Error: Missing API Key"
+    print(f"\n\x1b[1;{color_code}m--- {label.upper()} ({model}) --- \x1b[0m")
     ui.start(label)
     payload = {
         "system_instruction": {"parts": [{"text": system_prompt}]},
         "contents": [{"parts": [{"text": message_content}]}]
     }
-    # Using v1beta for system_instruction support
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
+    # Standardize Gemini model name (ensure it starts with models/)
+    if not model.startswith("models/"): model = f"models/{model}"
+    url = f"https://generativelanguage.googleapis.com/v1beta/{model}:generateContent?key={api_key}"
     cmd = ["curl", "-s", "-X", "POST", url, "-H", "Content-Type: application/json", "-d", json.dumps(payload)]
     return _execute_curl(cmd, provider="google")
 
 def run_openai_api(system_prompt, message_content, label, color_code, keys):
     api_key = keys.get("OPENAI_API_KEY")
-    if not api_key:
-        print(f"\n\x1b[1;31m[Error] {label}: OPENAI_API_KEY not found in Shela Settings.\x1b[0m")
-        return "Error: Missing API Key"
-    print(f"\n\x1b[1;{color_code}m--- {label.upper()} (OpenAI API) --- \x1b[0m")
+    model = os.environ.get("OPENAI_MODEL", "gpt-4o")
+    if not api_key: return "Error: Missing API Key"
+    print(f"\n\x1b[1;{color_code}m--- {label.upper()} ({model}) --- \x1b[0m")
     ui.start(label)
     payload = {
-        "model": "gpt-4o",
+        "model": model,
         "messages": [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": message_content}
@@ -159,43 +153,26 @@ def _execute_curl(cmd, provider="anthropic"):
         process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         stdout, stderr = process.communicate()
         ui.stop()
-        if process.returncode != 0:
-            print(f"\x1b[1;31mCurl process failed: {stderr}\x1b[0m")
-            return f"Error: {stderr}"
-        
-        try:
-            res = json.loads(stdout)
-        except json.JSONDecodeError:
-            print(f"\x1b[1;31mFailed to parse API response: {stdout}\x1b[0m")
-            return "Error: Invalid JSON response"
+        if process.returncode != 0: return f"Error: {stderr}"
+        try: res = json.loads(stdout)
+        except: return f"Error: Invalid JSON response: {stdout[:200]}"
 
         text = ""
         if provider == "anthropic":
-            if "content" in res and len(res["content"]) > 0:
-                text = res["content"][0]["text"]
-            else:
-                print(f"\x1b[1;31mAnthropic API Error: {json.dumps(res, indent=2)}\x1b[0m")
+            if "content" in res: text = res["content"][0]["text"]
+            else: print(f"\x1b[1;31mAnthropic Error: {res.get('error', res)}\x1b[0m")
         elif provider == "google":
-            if "candidates" in res and len(res["candidates"]) > 0:
-                text = res["candidates"][0]["content"]["parts"][0]["text"]
-            else:
-                print(f"\x1b[1;31mGemini API Error: {json.dumps(res, indent=2)}\x1b[0m")
+            if "candidates" in res: text = res["candidates"][0]["content"]["parts"][0]["text"]
+            else: print(f"\x1b[1;31mGemini Error: {res.get('error', res)}\x1b[0m")
         elif provider == "openai":
-            if "choices" in res and len(res["choices"]) > 0:
-                text = res["choices"][0]["message"]["content"]
-            else:
-                print(f"\x1b[1;31mOpenAI API Error: {json.dumps(res, indent=2)}\x1b[0m")
+            if "choices" in res: text = res["choices"][0]["message"]["content"]
+            else: print(f"\x1b[1;31mOpenAI Error: {res.get('error', res)}\x1b[0m")
         
         if text:
-            for char in text:
-                sys.stdout.write(char); sys.stdout.flush(); time.sleep(0.001)
-            print()
-            return text
+            for char in text: sys.stdout.write(char); sys.stdout.flush(); time.sleep(0.001)
+            print(); return text
         return "Error: No content returned"
-    except Exception as e:
-        ui.stop()
-        print(f"\x1b[1;31mException: {e}\x1b[0m")
-        return f"Error: {e}"
+    except Exception as e: ui.stop(); return f"Error: {e}"
 
 def main():
     cwd = os.getcwd()
@@ -208,27 +185,24 @@ def main():
     if not os.path.exists(state_path):
         with open(state_path, "w") as f: f.write("# Duo Session State\n")
 
-    # Authoritatively load keys from Shela storage
     current_keys = load_keys_from_shela()
     missing = [k for k in ["ANTHROPIC_API_KEY", "GEMINI_API_KEY", "OPENAI_API_KEY"] if not current_keys.get(k)]
     
     print(f"\n\x1b[1;33m[Shela Duo] Collaborative Multi-Agent Session Active.\x1b[0m")
-    if missing:
-        print(f"\x1b[1;31mWarning: Missing keys in Shela Settings: {', '.join(missing)}\x1b[0m")
-        print(f"\x1b[1;33mOpen Shela IDE > Settings to configure your API keys.\x1b[0m")
-    else:
-        print(f"\x1b[1;32mKeys loaded successfully from Shela configuration.\x1b[0m")
+    if missing: print(f"\x1b[1;31mWarning: Missing keys in Shela Settings: {', '.join(missing)}\x1b[0m")
+    else: print(f"\x1b[1;32mKeys loaded successfully from Shela configuration.\x1b[0m")
     
     print(f"\x1b[1;33mFramework: RAZIEL (Gemini) | BETZALEL (Claude) | LOKI (Codex)\x1b[0m")
 
-    def load_guide(path, label):
-        if os.path.exists(path):
-            with open(path, "r") as f: return f.read()
-        return f"Standard {label} operations."
-
-    raziel_guide = load_guide(GEMINI_GUIDE, "Raziel")
-    betzalel_guide = load_guide(CLAUDE_GUIDE, "Betzalel")
-    loki_guide = load_guide(LOKI_GUIDE, "Loki")
+    raziel_guide = ""
+    if os.path.exists(GEMINI_GUIDE):
+        with open(GEMINI_GUIDE, "r") as f: raziel_guide = f.read()
+    betzalel_guide = ""
+    if os.path.exists(CLAUDE_GUIDE):
+        with open(CLAUDE_GUIDE, "r") as f: betzalel_guide = f.read()
+    loki_guide = ""
+    if os.path.exists(LOKI_GUIDE):
+        with open(LOKI_GUIDE, "r") as f: loki_guide = f.read()
 
     base_instructions = (
         f"You are part of a multi-agent social-production circle. Adhere to these protocols:\n"
@@ -247,20 +221,20 @@ def main():
         if user_input.lower() in ['exit', 'quit']: break
         with open(state_path, "a") as f: f.write(f"\n{DELIMITER_CARBON}\n{user_input}\n")
 
-        # RAZIEL Turn
-        raziel_sys = f"STYLE_GUIDE: {raziel_guide}\n\nINSTRUCTIONS: {base_instructions}"
-        raziel_msg = f"Respond as {DELIMITER_GEMINI}. CURRENT_STATE:\n{state}\nPLAN:\n{plan}\nNEW_INPUT (from {DELIMITER_CARBON}): {user_input}\n"
+        # RAZIEL
+        raziel_sys = f"STYLE_GUIDE:\n{raziel_guide}\n\nINSTRUCTIONS:\n{base_instructions}"
+        raziel_msg = f"Respond as {DELIMITER_GEMINI}. CURRENT_STATE:\n{state}\nPLAN:\n{plan}\nNEW_INPUT: {user_input}\n"
         raziel_out = run_gemini_api(raziel_sys, raziel_msg, "Raziel", "35", current_keys)
         with open(state_path, "a") as f: f.write(f"\n{DELIMITER_GEMINI}\n{raziel_out}\n")
 
-        # BETZALEL Turn
-        betzalel_sys = f"ARCHITECTURAL_GUIDE: {betzalel_guide}\n\nINSTRUCTIONS: {base_instructions}"
+        # BETZALEL
+        betzalel_sys = f"ARCHITECTURAL_GUIDE:\n{betzalel_guide}\n\nINSTRUCTIONS:\n{base_instructions}"
         betzalel_msg = f"Respond as {DELIMITER_CLAUDE}. CURRENT_STATE:\n{state}\nPLAN:\n{plan}\nLAST_UPDATE: {raziel_out}\n"
         betzalel_out = run_anthropic_api(betzalel_sys, betzalel_msg, "Betzalel", "36", current_keys)
         with open(state_path, "a") as f: f.write(f"\n{DELIMITER_CLAUDE}\n{betzalel_out}\n")
 
-        # LOKI Turn
-        loki_sys = f"CREATIVE_GUIDE: {loki_guide}\n\nINSTRUCTIONS: {base_instructions}"
+        # LOKI
+        loki_sys = f"CREATIVE_GUIDE:\n{loki_guide}\n\nINSTRUCTIONS:\n{base_instructions}"
         loki_msg = f"Respond as {DELIMITER_CODEX}. CURRENT_STATE:\n{state}\nPLAN:\n{plan}\nPREVIOUS_INPUT: {betzalel_out}\n"
         loki_out = run_openai_api(loki_sys, loki_msg, "Loki", "31", current_keys)
         with open(state_path, "a") as f: f.write(f"\n{DELIMITER_CODEX}\n{loki_out}\n")
