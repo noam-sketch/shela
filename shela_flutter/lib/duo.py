@@ -14,6 +14,8 @@ import json
 import argparse
 import concurrent.futures
 
+import shutil
+
 # Communication Config
 STATE_FILE = ".shela_duo_state.md"
 DELIMITER_CARBON = "<<<CARBON>>>"
@@ -65,7 +67,9 @@ class DuoUI:
 
     def _spin(self):
         while not self.stop_spinner.is_set():
-            display_tip = self._current_tip[:60]
+            cols = shutil.get_terminal_size((80, 20)).columns
+            max_len = max(10, cols - 15)
+            display_tip = self._current_tip[:max_len]
             sys.stdout.write(f"\r\x1b[2K\x1b[1;34m{next(self.spinner)} {display_tip}\x1b[0m")
             sys.stdout.flush()
             time.sleep(0.1)
@@ -106,6 +110,8 @@ def load_keys_from_shela():
     except Exception: return {}
 
 def run_anthropic_api(system_prompt, message_content, label, color_code, api_key, model, stream=True):
+    api_key = api_key.strip() if api_key else ""
+    model = model.strip() if model else "claude-3-5-sonnet-latest"
     if not api_key: return "Error: Missing API Key"
     if stream:
         print(f"\n\x1b[1;{color_code}m--- {label.upper()} ({model}) --- \x1b[0m")
@@ -120,6 +126,8 @@ def run_anthropic_api(system_prompt, message_content, label, color_code, api_key
     return _execute_curl(cmd, provider="anthropic", stream=stream)
 
 def run_gemini_api(system_prompt, message_content, label, color_code, api_key, model, stream=True):
+    api_key = api_key.strip() if api_key else ""
+    model = model.strip() if model else "gemini-1.5-flash"
     if not api_key: return "Error: Missing API Key"
     if stream:
         print(f"\n\x1b[1;{color_code}m--- {label.upper()} ({model}) --- \x1b[0m")
@@ -134,6 +142,8 @@ def run_gemini_api(system_prompt, message_content, label, color_code, api_key, m
     return _execute_curl(cmd, provider="google", stream=stream)
 
 def run_openai_api(system_prompt, message_content, label, color_code, api_key, model, stream=True):
+    api_key = api_key.strip() if api_key else ""
+    model = model.strip() if model else "gpt-4o"
     if not api_key: return "Error: Missing API Key"
     if stream:
         print(f"\n\x1b[1;{color_code}m--- {label.upper()} ({model}) --- \x1b[0m")
