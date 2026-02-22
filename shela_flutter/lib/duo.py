@@ -94,7 +94,6 @@ def run_agent_stream(cmd_list, label, color_code, is_pty=False):
                             line = lines[-2]
                             if len(line) > 5: ui.update(f"{label}: {line[:40]}...")
                     ui.start(f"{label} is working")
-                    if DELIMITER_USER1 in "".join(output[-50:]): break
                 if sys.stdin in r:
                     os.write(fd, os.read(sys.stdin.fileno(), 1024))
         finally:
@@ -158,7 +157,7 @@ def main():
         with open(brainstorm_file, "r") as f: plan = f.read()
 
         user_input = input(f"\n\x1b[1;32m{DELIMITER_CARBON}: \x1b[0m")
-        if user_input.lower() == 'exit': break
+        if user_input.lower() in ['exit', 'quit']: break
         with open(state_path, "a") as f: f.write(f"\n{DELIMITER_CARBON}\n{user_input}\n")
 
         # RAZIEL Turn
@@ -189,7 +188,7 @@ def main():
             f"Respond as {DELIMITER_CODEX}. Task: Transform and push boundaries.\n"
             f"CURRENT_STATE:\n{state}\nPLAN:\n{plan}\nPREVIOUS_INPUT: {betzalel_out}\n"
         )
-        loki_out = run_agent_stream(["codex", loki_prompt], "Loki", "31")
+        loki_out = run_agent_stream(["codex", loki_prompt], "Loki", "31", is_pty=True)
         with open(state_path, "a") as f: f.write(f"\n{DELIMITER_CODEX}\n{loki_out}\n")
 
         time.sleep(0.1)
