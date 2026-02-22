@@ -216,7 +216,12 @@ def main():
     parser.add_argument("--anthropic-key")
     parser.add_argument("--gemini-key")
     parser.add_argument("--openai-key")
+    parser.add_argument("--carbon-id", default="")
     args = parser.parse_args()
+
+    global DELIMITER_CARBON
+    if args.carbon_id:
+        DELIMITER_CARBON = f"<<<CARBON[{args.carbon_id}]>>>"
 
     cwd = os.getcwd()
     plan_dir = os.path.join(cwd, "plan")

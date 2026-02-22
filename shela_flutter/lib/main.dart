@@ -36,6 +36,7 @@ class _ShelaAppState extends State<ShelaApp> {
   String _anthropicKey = '';
   String _geminiKey = '';
   String _openaiKey = '';
+  String _carbonEmail = '';
   String _selectedGeminiModel = 'models/gemini-1.5-flash';
   String _selectedAnthropicModel = 'claude-3-5-sonnet-20241022';
   String _selectedOpenaiModel = 'gpt-4o';
@@ -59,6 +60,7 @@ class _ShelaAppState extends State<ShelaApp> {
       _anthropicKey = prefs.getString('anthropicKey') ?? '';
       _geminiKey = prefs.getString('geminiKey') ?? '';
       _openaiKey = prefs.getString('openaiKey') ?? '';
+      _carbonEmail = prefs.getString('carbonEmail') ?? '';
       _selectedGeminiModel = prefs.getString('selectedGeminiModel') ?? 'models/gemini-1.5-flash';
       _selectedAnthropicModel = prefs.getString('selectedAnthropicModel') ?? 'claude-3-5-sonnet-20241022';
       _selectedOpenaiModel = prefs.getString('selectedOpenaiModel') ?? 'gpt-4o';
@@ -74,6 +76,7 @@ class _ShelaAppState extends State<ShelaApp> {
     await prefs.setString('anthropicKey', _anthropicKey);
     await prefs.setString('geminiKey', _geminiKey);
     await prefs.setString('openaiKey', _openaiKey);
+    await prefs.setString('carbonEmail', _carbonEmail);
     await prefs.setString('selectedGeminiModel', _selectedGeminiModel);
     await prefs.setString('selectedAnthropicModel', _selectedAnthropicModel);
     await prefs.setString('selectedOpenaiModel', _selectedOpenaiModel);
@@ -149,6 +152,7 @@ class _ShelaAppState extends State<ShelaApp> {
     String? anthropicKey,
     String? geminiKey,
     String? openaiKey,
+    String? carbonEmail,
     String? geminiModel,
     String? anthropicModel,
     String? openaiModel,
@@ -157,6 +161,7 @@ class _ShelaAppState extends State<ShelaApp> {
       if (mode != null) _themeMode = mode;
       if (color != null) _primaryColor = color;
       if (fontSize != null) _fontSize = fontSize;
+      if (carbonEmail != null) _carbonEmail = carbonEmail;
       if (anthropicKey != null) {
         _anthropicKey = anthropicKey;
         _fetchAnthropicModels();
@@ -202,6 +207,7 @@ class _ShelaAppState extends State<ShelaApp> {
         anthropicKey: _anthropicKey,
         geminiKey: _geminiKey,
         openaiKey: _openaiKey,
+        carbonEmail: _carbonEmail,
         selectedGeminiModel: _selectedGeminiModel,
         selectedAnthropicModel: _selectedAnthropicModel,
         selectedOpenaiModel: _selectedOpenaiModel,
@@ -220,6 +226,7 @@ class IdeWorkspace extends StatefulWidget {
   final String anthropicKey;
   final String geminiKey;
   final String openaiKey;
+  final String carbonEmail;
   final String selectedGeminiModel;
   final String selectedAnthropicModel;
   final String selectedOpenaiModel;
@@ -233,6 +240,7 @@ class IdeWorkspace extends StatefulWidget {
     String? anthropicKey, 
     String? geminiKey, 
     String? openaiKey,
+    String? carbonEmail,
     String? geminiModel,
     String? anthropicModel,
     String? openaiModel,
@@ -245,6 +253,7 @@ class IdeWorkspace extends StatefulWidget {
     required this.anthropicKey,
     required this.geminiKey,
     required this.openaiKey,
+    required this.carbonEmail,
     required this.selectedGeminiModel,
     required this.selectedAnthropicModel,
     required this.selectedOpenaiModel,
@@ -516,6 +525,12 @@ class _IdeWorkspaceState extends State<IdeWorkspace> {
                 child: Column(
                   children: [
                     TextField(
+                      decoration: const InputDecoration(labelText: 'Carbon Identity (Email)'),
+                      controller: TextEditingController(text: widget.carbonEmail)..selection = TextSelection.collapsed(offset: widget.carbonEmail.length),
+                      onChanged: (val) => widget.onSettingsChanged(carbonEmail: val),
+                    ),
+                    const SizedBox(height: 16),
+                    TextField(
                       decoration: const InputDecoration(labelText: 'Anthropic API Key'),
                       controller: TextEditingController(text: widget.anthropicKey)..selection = TextSelection.collapsed(offset: widget.anthropicKey.length),
                       obscureText: true,
@@ -638,7 +653,8 @@ class _IdeWorkspaceState extends State<IdeWorkspace> {
           '--openai-model "${widget.selectedOpenaiModel}" '
           '--gemini-key "${widget.geminiKey}" '
           '--anthropic-key "${widget.anthropicKey}" '
-          '--openai-key "${widget.openaiKey}"; stty echo\n';
+          '--openai-key "${widget.openaiKey}" '
+          '--carbon-id "${widget.carbonEmail}"; stty echo\n';
       sessions[activeSessionIndex].pty!.write(const Utf8Encoder().convert(cmd));
     }
   }
