@@ -9,6 +9,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter_highlight/flutter_highlight.dart';
 import 'package:flutter_highlight/themes/dracula.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main(List<String> args) {
   WidgetsFlutterBinding.ensureInitialized();
@@ -27,12 +28,37 @@ class ShelaApp extends StatefulWidget {
 class _ShelaAppState extends State<ShelaApp> {
   ThemeMode _themeMode = ThemeMode.dark;
   Color _primaryColor = Colors.deepPurple;
+  double _fontSize = 13.0;
 
-  void _updateTheme(ThemeMode mode, Color color) {
+  @override
+  void initState() {
+    super.initState();
+    _loadSettings();
+  }
+
+  Future<void> _loadSettings() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _themeMode = ThemeMode.values[prefs.getInt('themeMode') ?? ThemeMode.dark.index];
+      _primaryColor = Color(prefs.getInt('primaryColor') ?? Colors.deepPurple.toARGB32());
+      _fontSize = prefs.getDouble('fontSize') ?? 13.0;
+    });
+  }
+
+  Future<void> _saveSettings() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt('themeMode', _themeMode.index);
+    await prefs.setInt('primaryColor', _primaryColor.toARGB32());
+    await prefs.setDouble('fontSize', _fontSize);
+  }
+
+  void _updateTheme(ThemeMode mode, Color color, double fontSize) {
     setState(() {
       _themeMode = mode;
       _primaryColor = color;
+      _fontSize = fontSize;
     });
+    _saveSettings();
   }
 
   @override
@@ -57,6 +83,7 @@ class _ShelaAppState extends State<ShelaApp> {
       ),
       home: IdeWorkspace(
         initialDir: widget.initialDir,
+        fontSize: _fontSize,
         onThemeChanged: _updateTheme,
       ),
     );
@@ -133,8 +160,9 @@ IconData getFileIconFromPath(String filePath) {
 
 class IdeWorkspace extends StatefulWidget {
   final String? initialDir;
-  final Function(ThemeMode, Color) onThemeChanged;
-  const IdeWorkspace({super.key, this.initialDir, required this.onThemeChanged});
+  final double fontSize;
+  final Function(ThemeMode, Color, double) onThemeChanged;
+  const IdeWorkspace({super.key, this.initialDir, required this.fontSize, required this.onThemeChanged});
 
   @override
   State<IdeWorkspace> createState() => _IdeWorkspaceState();
@@ -150,9 +178,6 @@ class _IdeWorkspaceState extends State<IdeWorkspace> {
   
   late String currentDir;
   bool showCloud = false;
-
-  // Theme & Style State
-  double _fontSize = 13.0;
 
   // Editor State
   List<Document> openDocuments = [];
@@ -211,7 +236,7 @@ class _IdeWorkspaceState extends State<IdeWorkspace> {
                     controller: doc.controller,
                     maxLines: null,
                     expands: true,
-                    style: GoogleFonts.firaCode(fontSize: _fontSize),
+                    style: GoogleFonts.firaCode(fontSize: widget.fontSize),
                     decoration: const InputDecoration(border: InputBorder.none),
                   ),
                 )
@@ -220,7 +245,7 @@ class _IdeWorkspaceState extends State<IdeWorkspace> {
                   language: doc.selectedFileExtension,
                   theme: draculaTheme,
                   padding: const EdgeInsets.all(8),
-                  textStyle: GoogleFonts.firaCode(fontSize: _fontSize),
+                  textStyle: GoogleFonts.firaCode(fontSize: widget.fontSize),
                 ),
         ),
       ],
@@ -352,9 +377,9 @@ class _IdeWorkspaceState extends State<IdeWorkspace> {
             ListTile(
               title: const Text('Theme Mode'),
               trailing: DropdownButton<ThemeMode>(
-                value: ThemeMode.dark,
+                value: Theme.of(context).brightness == Brightness.dark ? ThemeMode.dark : ThemeMode.light,
                 onChanged: (mode) {
-                  if (mode != null) widget.onThemeChanged(mode, Theme.of(context).primaryColor);
+                  if (mode != null) widget.onThemeChanged(mode, Theme.of(context).primaryColor, widget.fontSize);
                   Navigator.pop(context);
                 },
                 items: const [
@@ -366,17 +391,23 @@ class _IdeWorkspaceState extends State<IdeWorkspace> {
             const Divider(),
             ListTile(
               title: const Text('Font Size'),
-              subtitle: Slider(
-                value: _fontSize,
-                min: 8,
-                max: 24,
-                divisions: 16,
-                label: _fontSize.round().toString(),
-                onChanged: (value) {
-                  setState(() => _fontSize = value);
-                },
+              subtitle: StatefulBuilder(
+                builder: (context, setState) => Slider(
+                  value: widget.fontSize,
+                  min: 8,
+                  max: 24,
+                  divisions: 16,
+                  label: widget.fontSize.round().toString(),
+                  onChanged: (value) {
+                    widget.onThemeChanged(
+                      Theme.of(context).brightness == Brightness.dark ? ThemeMode.dark : ThemeMode.light,
+                      Theme.of(context).primaryColor,
+                      value,
+                    );
+                  },
+                ),
               ),
-              trailing: Text(_fontSize.round().toString()),
+              trailing: Text(widget.fontSize.round().toString()),
             ),
             const Divider(),
             Wrap(
@@ -384,7 +415,7 @@ class _IdeWorkspaceState extends State<IdeWorkspace> {
               children: [Colors.deepPurple, Colors.blue, Colors.green, Colors.orange, Colors.red].map((color) {
                 return GestureDetector(
                   onTap: () {
-                    widget.onThemeChanged(ThemeMode.dark, color);
+                    widget.onThemeChanged(ThemeMode.dark, color, widget.fontSize);
                     Navigator.pop(context);
                   },
                   child: CircleAvatar(backgroundColor: color, radius: 15),
@@ -647,6 +678,10 @@ Shapeshifter, Catalyst, and Master of Narrative Inversion.
           focusNode: focusNode,
           autofocus: focusNode != null,
           backgroundOpacity: 0.7,
+          textStyle: TerminalStyle(
+            fontSize: widget.fontSize,
+            fontFamily: GoogleFonts.firaCode().fontFamily ?? 'monospace',
+          ),
         ),
       ),
     );

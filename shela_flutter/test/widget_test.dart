@@ -23,7 +23,8 @@ void main() {
   testWidgets('IdeWorkspace smoke test', (WidgetTester tester) async {
     await tester.pumpWidget(MaterialApp(
       home: IdeWorkspace(
-        onThemeChanged: (mode, color) {},
+        fontSize: 13.0,
+        onThemeChanged: (mode, color, size) {},
       ),
     ));
 
