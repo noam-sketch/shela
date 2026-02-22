@@ -110,7 +110,7 @@ def run_anthropic_api(system_prompt, message_content, label, color_code, keys):
     print(f"\n\x1b[1;{color_code}m--- {label.upper()} (Anthropic API) --- \x1b[0m")
     ui.start(label)
     payload = {
-        "model": "claude-3-5-sonnet-20241022",
+        "model": "claude-3-5-sonnet-20240620",
         "max_tokens": 4096,
         "system": system_prompt,
         "messages": [{"role": "user", "content": message_content}]
@@ -129,7 +129,7 @@ def run_gemini_api(system_prompt, message_content, label, color_code, keys):
         "system_instruction": {"parts": [{"text": system_prompt}]},
         "contents": [{"parts": [{"text": message_content}]}]
     }
-    url = f"https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key={api_key}"
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key={api_key}"
     cmd = ["curl", "-s", "-X", "POST", url, "-H", "Content-Type: application/json", "-d", json.dumps(payload)]
     return _execute_curl(cmd, provider="google")
 
