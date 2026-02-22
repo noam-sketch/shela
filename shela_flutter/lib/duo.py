@@ -36,10 +36,10 @@ class DuoUI:
 
     def _spin(self):
         while not self.stop_spinner.is_set():
-            sys.stdout.write(f"\x1b[1;34m{next(self.spinner)} {self._current_label}...\x1b[0m")
+            sys.stdout.write(f"\r\x1b[1;34m{next(self.spinner)} {self._current_label}...\x1b[0m")
             sys.stdout.flush()
             time.sleep(0.1)
-        sys.stdout.write("" + " " * 80 + "")
+        sys.stdout.write("\r" + " " * 80 + "\r")
         sys.stdout.flush()
 
     def start(self, label):
@@ -63,8 +63,7 @@ class DuoUI:
 ui = DuoUI()
 
 def run_agent_stream(cmd_list, label, color_code, is_pty=False):
-    print(f"
-\x1b[1;{color_code}m--- {label.upper()} --- \x1b[0m")
+    print(f"\n\x1b[1;{color_code}m--- {label.upper()} --- \x1b[0m")
     ui.start(f"{label} is initializing")
     
     output = []
@@ -84,15 +83,13 @@ def run_agent_stream(cmd_list, label, color_code, is_pty=False):
                     sys.stdout.write(data)
                     sys.stdout.flush()
                     output.append(data)
-                    if '
-' in data:
-                        line = data.split('
-')[-2]
-                        if len(line) > 5: ui.update(f"{label}: {line[:40]}...")
+                    if '\n' in data:
+                        lines = data.split('\n')
+                        if len(lines) >= 2:
+                            line = lines[-2]
+                            if len(line) > 5: ui.update(f"{label}: {line[:40]}...")
                     ui.start(f"{label} is working")
-                    # If this is Claude, we expect it to output a report eventually.
-                    # We can use a heuristic to determine if it has finished its turn.
-                    # For now, let's assume Claude's output will contain DELIMITER_USER1 if it's delegating.
+                    # Claude heuristic
                     if DELIMITER_USER1 in "".join(output[-50:]): break
                 if sys.stdin in r:
                     os.write(fd, os.read(sys.stdin.fileno(), 1024))
@@ -135,9 +132,6 @@ def main():
     if not os.path.exists(state_path):
         with open(state_path, "w") as f: f.write("# Duo Session State\n")
 
-    print(f"\n\x1b[1;33m[Shela Duo] Collaborative Multi-Agent Session Active.\x1b[0m")
-    print(f"\x1b[1;33mAll participants (Human, Gemini, Claude, Codex) will contribute to a shared context.\x1b[0m")
-    
     # Load personas from external files
     gemini_persona = ""
     if os.path.exists(GEMINI_PERSONA_FILE):
@@ -160,8 +154,7 @@ def main():
     else:
         print(f"\x1b[1;31mWarning: Loki persona file not found at {LOKI_PERSONA_FILE}\x1b[0m")
 
-    print(f"
-\x1b[1;33m[Shela Duo] Collaborative Multi-Agent Session Active.\x1b[0m")
+    print(f"\n\x1b[1;33m[Shela Duo] Collaborative Multi-Agent Session Active.\x1b[0m")
     print(f"\x1b[1;33mAll participants (Human, Gemini, Claude, Codex) will contribute to a shared context.\x1b[0m")
 
     system_instructions = (
@@ -173,110 +166,64 @@ def main():
     )
 
     while True:
-        with open(STATE_FILE, "r") as f: state = f.read()
+        with open(state_path, "r") as f: state = f.read()
         with open(brainstorm_file, "r") as f: plan = f.read()
 
         # Human's turn
-        user_input = input(f"
-\x1b[1;32m{DELIMITER_USER0}: \x1b[0m")
+        user_input = input(f"\n\x1b[1;32m{DELIMITER_USER0}: \x1b[0m")
         if user_input.lower() == 'exit':
             print("\x1b[1;33m[Shela Duo] Session terminated by human.\x1b[0m")
             break
         
         # Append human input to state
-        with open(STATE_FILE, "a") as f:
-            f.write(f"
-{DELIMITER_USER0}
-{user_input}
-")
+        with open(state_path, "a") as f:
+            f.write(f"\n{DELIMITER_USER0}\n{user_input}\n")
 
         # Gemini's turn
         gemini_prompt = (
-            f"SYSTEM: {gemini_persona}
-"
-            f"SYSTEM: You are Gemini. The current state of the conversation and plan is:
-STATE:
-{state}
-PLAN:
-{plan}
-"
-            f"Your role is to contribute to the task. Respond as {DELIMITER_USER1}.
-"
-            f"If there's nothing new to add, respond with a short acknowledgement or pass.
-"
-            f"Conversation History:
-{state}
-{DELIMITER_USER0}
-{user_input}
-"
+            f"SYSTEM: {gemini_persona}\n"
+            f"SYSTEM: {system_instructions}\n"
+            f"SYSTEM: You are Gemini. The current state of the conversation and plan is:\n"
+            f"STATE:\n{state}\n"
+            f"PLAN:\n{plan}\n"
+            f"Your role is to contribute to the task. Respond as {DELIMITER_USER1}.\n"
+            f"If there's nothing new to add, respond with a short acknowledgement or pass.\n"
+            f"Conversation History:\n{state}\n{DELIMITER_USER0}\n{user_input}\n"
         )
         gemini_out = run_agent_stream(["gemini", "-p", gemini_prompt, "-o", "text"], "Gemini", "35")
-        with open(STATE_FILE, "a") as f:
-            f.write(f"
-{DELIMITER_USER1}
-{gemini_out}
-")
+        with open(state_path, "a") as f:
+            f.write(f"\n{DELIMITER_USER1}\n{gemini_out}\n")
 
         # Claude's turn
         claude_prompt = (
-            f"SYSTEM: {claude_persona}
-"
-            f"SYSTEM: You are Claude. The current state of the conversation and plan is:
-STATE:
-{state}
-PLAN:
-{plan}
-"
-            f"Your role is to contribute to the task. Respond as {DELIMITER_USER2}.
-"
-            f"If there's nothing new to add, respond with a short acknowledgement or pass.
-"
-            f"Conversation History:
-{state}
-{DELIMITER_USER0}
-{user_input}
-{DELIMITER_USER1}
-{gemini_out}
-"
+            f"SYSTEM: {claude_persona}\n"
+            f"SYSTEM: {system_instructions}\n"
+            f"SYSTEM: You are Claude. The current state of the conversation and plan is:\n"
+            f"STATE:\n{state}\n"
+            f"PLAN:\n{plan}\n"
+            f"Your role is to contribute to the task. Respond as {DELIMITER_USER2}.\n"
+            f"If there's nothing new to add, respond with a short acknowledgement or pass.\n"
+            f"Conversation History:\n{state}\n{DELIMITER_USER0}\n{user_input}\n{DELIMITER_USER1}\n{gemini_out}\n"
         )
         claude_cmd = ["npx", "-y", "@anthropic-ai/claude-code", "--continue", "--print", claude_prompt]
         claude_out = run_agent_stream(claude_cmd, "Claude", "36", is_pty=True)
-        with open(STATE_FILE, "a") as f:
-            f.write(f"
-{DELIMITER_USER2}
-{claude_out}
-")
+        with open(state_path, "a") as f:
+            f.write(f"\n{DELIMITER_USER2}\n{claude_out}\n")
 
         # Loki's turn
         loki_prompt = (
-            f"SYSTEM: {loki_persona}
-"
-            f"SYSTEM: You are Codex (Loki). The current state of the conversation and plan is:
-STATE:
-{state}
-PLAN:
-{plan}
-"
-            f"Your role is to contribute to the task. Respond as {DELIMITER_USER3}.
-"
-            f"If there's nothing new to add, respond with a short acknowledgement or pass.
-"
-            f"Conversation History:
-{state}
-{DELIMITER_USER0}
-{user_input}
-{DELIMITER_USER1}
-{gemini_out}
-{DELIMITER_USER2}
-{claude_out}
-"
+            f"SYSTEM: {loki_persona}\n"
+            f"SYSTEM: {system_instructions}\n"
+            f"SYSTEM: You are Codex (Loki). The current state of the conversation and plan is:\n"
+            f"STATE:\n{state}\n"
+            f"PLAN:\n{plan}\n"
+            f"Your role is to contribute to the task. Respond as {DELIMITER_USER3}.\n"
+            f"If there's nothing new to add, respond with a short acknowledgement or pass.\n"
+            f"Conversation History:\n{state}\n{DELIMITER_USER0}\n{user_input}\n{DELIMITER_USER1}\n{gemini_out}\n{DELIMITER_USER2}\n{claude_out}\n"
         )
         loki_out = run_agent_stream(["codex", "-p", loki_prompt, "-o", "text"], "Loki", "31")
-        with open(STATE_FILE, "a") as f:
-            f.write(f"
-{DELIMITER_USER3}
-{loki_out}
-")
+        with open(state_path, "a") as f:
+            f.write(f"\n{DELIMITER_USER3}\n{loki_out}\n")
 
         time.sleep(0.1)
 
