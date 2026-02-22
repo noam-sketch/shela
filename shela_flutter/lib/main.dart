@@ -279,6 +279,7 @@ class _IdeWorkspaceState extends State<IdeWorkspace> {
   double _rightVerticalSplit = 0.5;
 
   final FocusNode _terminalFocusNode = FocusNode();
+  final TextEditingController _promptController = TextEditingController();
 
   @override
   void initState() {
@@ -309,6 +310,7 @@ class _IdeWorkspaceState extends State<IdeWorkspace> {
   @override
   void dispose() {
     _terminalFocusNode.dispose();
+    _promptController.dispose();
     for (var doc in openDocuments) {
       doc.dispose();
     }
@@ -936,6 +938,37 @@ class _IdeWorkspaceState extends State<IdeWorkspace> {
                               ),
                             ),
                           ],
+                          Container(
+                            color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                            child: TextField(
+                              controller: _promptController,
+                              style: const TextStyle(fontSize: 13),
+                              decoration: InputDecoration(
+                                hintText: 'Queue Prompt (Press Enter to send to active terminal)...',
+                                hintStyle: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.7)),
+                                border: InputBorder.none,
+                                isDense: true,
+                                suffixIcon: IconButton(
+                                  icon: const Icon(Icons.send, size: 16),
+                                  onPressed: () {
+                                    final value = _promptController.text;
+                                    if (value.isNotEmpty && activeSessionIndex < sessions.length && sessions[activeSessionIndex].pty != null) {
+                                      sessions[activeSessionIndex].pty!.write(const Utf8Encoder().convert('$value\n'));
+                                      _promptController.clear();
+                                    }
+                                  },
+                                ),
+                              ),
+                              onSubmitted: (value) {
+                                if (value.isNotEmpty && activeSessionIndex < sessions.length && sessions[activeSessionIndex].pty != null) {
+                                  sessions[activeSessionIndex].pty!.write(const Utf8Encoder().convert('$value\n'));
+                                  _promptController.clear();
+                                  FocusScope.of(context).requestFocus(_terminalFocusNode);
+                                }
+                              },
+                            ),
+                          ),
                         ],
                       ),
                     ),
@@ -1366,6 +1399,18 @@ class _FileBrowserState extends State<FileBrowser> {
                     title: Text(p.basename(entity.path)),
                     dense: true,
                     onTap: () => isDir ? widget.onDirectoryChanged(entity.path) : widget.onFileSelected(File(entity.path)),
+                    trailing: Builder(
+                      builder: (BuildContext itemContext) {
+                        return IconButton(
+                          icon: const Icon(Icons.more_vert, size: 18),
+                          onPressed: () {
+                            final RenderBox box = itemContext.findRenderObject() as RenderBox;
+                            final Offset offset = box.localToGlobal(box.size.bottomRight(Offset.zero));
+                            _showFileContextMenu(itemContext, offset, entity);
+                          },
+                        );
+                      }
+                    ),
                   ),
                 );
               },
