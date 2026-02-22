@@ -12,6 +12,7 @@ import re
 import random
 import json
 import argparse
+import concurrent.futures
 
 # Communication Config
 STATE_FILE = ".shela_duo_state.md"
@@ -58,8 +59,9 @@ class DuoUI:
         self.spinner = itertools.cycle(['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'])
         self.stop_spinner = threading.Event()
         self._current_tip = ""
-        self._is_running = False
+        self._running_count = 0
         self._spinner_thread = None
+        self._lock = threading.Lock()
 
     def _spin(self):
         while not self.stop_spinner.is_set():
@@ -72,19 +74,22 @@ class DuoUI:
         sys.stdout.flush()
 
     def start(self, label):
-        self._current_tip = random.choice(KNOWLEDGE_BASE)
-        if not self._is_running:
-            self.stop_spinner.clear()
-            self._is_running = True
-            self._spinner_thread = threading.Thread(target=self._spin, daemon=True)
-            self._spinner_thread.start()
+        with self._lock:
+            self._current_tip = random.choice(KNOWLEDGE_BASE)
+            if self._running_count == 0:
+                self.stop_spinner.clear()
+                self._spinner_thread = threading.Thread(target=self._spin, daemon=True)
+                self._spinner_thread.start()
+            self._running_count += 1
 
     def stop(self):
-        if self._is_running:
-            self.stop_spinner.set()
-            if self._spinner_thread:
-                self._spinner_thread.join(timeout=0.5)
-            self._is_running = False
+        with self._lock:
+            if self._running_count > 0:
+                self._running_count -= 1
+                if self._running_count == 0:
+                    self.stop_spinner.set()
+                    if self._spinner_thread:
+                        self._spinner_thread.join(timeout=0.5)
 
 ui = DuoUI()
 
@@ -101,9 +106,10 @@ def load_keys_from_shela():
             }
     except Exception: return {}
 
-def run_anthropic_api(system_prompt, message_content, label, color_code, api_key, model):
+def run_anthropic_api(system_prompt, message_content, label, color_code, api_key, model, stream=True):
     if not api_key: return "Error: Missing API Key"
-    print(f"\n\x1b[1;{color_code}m--- {label.upper()} ({model}) --- \x1b[0m")
+    if stream:
+        print(f"\n\x1b[1;{color_code}m--- {label.upper()} ({model}) --- \x1b[0m")
     ui.start(label)
     payload = {
         "model": model,
@@ -112,25 +118,26 @@ def run_anthropic_api(system_prompt, message_content, label, color_code, api_key
         "messages": [{"role": "user", "content": message_content}]
     }
     cmd = ["curl", "-s", "https://api.anthropic.com/v1/messages", "-H", "content-type: application/json", "-H", f"x-api-key: {api_key}", "-H", "anthropic-version: 2023-06-01", "-d", json.dumps(payload)]
-    return _execute_curl(cmd, provider="anthropic")
+    return _execute_curl(cmd, provider="anthropic", stream=stream)
 
-def run_gemini_api(system_prompt, message_content, label, color_code, api_key, model):
+def run_gemini_api(system_prompt, message_content, label, color_code, api_key, model, stream=True):
     if not api_key: return "Error: Missing API Key"
-    print(f"\n\x1b[1;{color_code}m--- {label.upper()} ({model}) --- \x1b[0m")
+    if stream:
+        print(f"\n\x1b[1;{color_code}m--- {label.upper()} ({model}) --- \x1b[0m")
     ui.start(label)
     payload = {
         "system_instruction": {"parts": [{"text": system_prompt}]},
         "contents": [{"parts": [{"text": message_content}]}]
     }
-    # Standardize Gemini model name (ensure it starts with models/)
     m_name = model if model.startswith("models/") else f"models/{model}"
     url = f"https://generativelanguage.googleapis.com/v1beta/{m_name}:generateContent?key={api_key}"
     cmd = ["curl", "-s", "-X", "POST", url, "-H", "Content-Type: application/json", "-d", json.dumps(payload)]
-    return _execute_curl(cmd, provider="google")
+    return _execute_curl(cmd, provider="google", stream=stream)
 
-def run_openai_api(system_prompt, message_content, label, color_code, api_key, model):
+def run_openai_api(system_prompt, message_content, label, color_code, api_key, model, stream=True):
     if not api_key: return "Error: Missing API Key"
-    print(f"\n\x1b[1;{color_code}m--- {label.upper()} ({model}) --- \x1b[0m")
+    if stream:
+        print(f"\n\x1b[1;{color_code}m--- {label.upper()} ({model}) --- \x1b[0m")
     ui.start(label)
     payload = {
         "model": model,
@@ -140,9 +147,9 @@ def run_openai_api(system_prompt, message_content, label, color_code, api_key, m
         ]
     }
     cmd = ["curl", "-s", "https://api.openai.com/v1/chat/completions", "-H", "Content-Type: application/json", "-H", f"Authorization: Bearer {api_key}", "-d", json.dumps(payload)]
-    return _execute_curl(cmd, provider="openai")
+    return _execute_curl(cmd, provider="openai", stream=stream)
 
-def _execute_curl(cmd, provider="anthropic"):
+def _execute_curl(cmd, provider="anthropic", stream=True):
     try:
         process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         stdout, stderr = process.communicate()
@@ -163,8 +170,10 @@ def _execute_curl(cmd, provider="anthropic"):
             else: print(f"\x1b[1;31mOpenAI Error: {res.get('error', res)}\x1b[0m")
         
         if text:
-            for char in text: sys.stdout.write(char); sys.stdout.flush(); time.sleep(0.001)
-            print(); return text
+            if stream:
+                for char in text: sys.stdout.write(char); sys.stdout.flush(); time.sleep(0.001)
+                print()
+            return text
         return "Error: No content returned"
     except Exception as e: ui.stop(); return f"Error: {e}"
 
@@ -194,6 +203,7 @@ def main():
     openai_key = args.openai_key or os.environ.get("OPENAI_API_KEY") or shela_keys.get("OPENAI_API_KEY")
 
     print(f"\n\x1b[1;33m[Shela Duo] Collaborative Multi-Agent Session Active.\x1b[0m")
+    print(f"\x1b[1;35m[Asynchronous Concurrent Multiplexing Enabled]\x1b[0m")
     print(f"\x1b[1;33mFramework: RAZIEL (Gemini) | BETZALEL (Claude) | LOKI (Codex)\x1b[0m")
 
     raziel_guide = ""
@@ -223,23 +233,37 @@ def main():
         if user_input.lower() in ['exit', 'quit']: break
         with open(state_path, "a") as f: f.write(f"\n{DELIMITER_CARBON}\n{user_input}\n")
 
-        # RAZIEL
+        print(f"\n\x1b[1;35m--- MULTIPLEXING: RAZIEL & LOKI (CONCURRENT ANALYSIS) --- \x1b[0m")
+
+        # Prepare prompts
         raziel_sys = f"STYLE_GUIDE:\n{raziel_guide}\n\nINSTRUCTIONS:\n{base_instructions}"
         raziel_msg = f"Respond as {DELIMITER_GEMINI}. CURRENT_STATE:\n{state}\nPLAN:\n{plan}\nNEW_INPUT: {user_input}\n"
-        raziel_out = run_gemini_api(raziel_sys, raziel_msg, "Raziel", "35", gemini_key, args.gemini_model)
-        with open(state_path, "a") as f: f.write(f"\n{DELIMITER_GEMINI}\n{raziel_out}\n")
 
-        # BETZALEL
-        betzalel_sys = f"ARCHITECTURAL_GUIDE:\n{betzalel_guide}\n\nINSTRUCTIONS:\n{base_instructions}"
-        betzalel_msg = f"Respond as {DELIMITER_CLAUDE}. CURRENT_STATE:\n{state}\nPLAN:\n{plan}\nLAST_UPDATE: {raziel_out}\n"
-        betzalel_out = run_anthropic_api(betzalel_sys, betzalel_msg, "Betzalel", "36", anthropic_key, args.anthropic_model)
-        with open(state_path, "a") as f: f.write(f"\n{DELIMITER_CLAUDE}\n{betzalel_out}\n")
-
-        # LOKI
         loki_sys = f"CREATIVE_GUIDE:\n{loki_guide}\n\nINSTRUCTIONS:\n{base_instructions}"
-        loki_msg = f"Respond as {DELIMITER_CODEX}. CURRENT_STATE:\n{state}\nPLAN:\n{plan}\nPREVIOUS_INPUT: {betzalel_out}\n"
-        loki_out = run_openai_api(loki_sys, loki_msg, "Loki", "31", openai_key, args.openai_model)
-        with open(state_path, "a") as f: f.write(f"\n{DELIMITER_CODEX}\n{loki_out}\n")
+        loki_msg = f"Respond as {DELIMITER_CODEX}. CURRENT_STATE:\n{state}\nPLAN:\n{plan}\nNEW_INPUT: {user_input}\n"
+
+        # Execute Raziel and Loki concurrently
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            future_raziel = executor.submit(run_gemini_api, raziel_sys, raziel_msg, "Raziel", "35", gemini_key, args.gemini_model, False)
+            future_loki = executor.submit(run_openai_api, loki_sys, loki_msg, "Loki", "31", openai_key, args.openai_model, False)
+
+            raziel_out = future_raziel.result()
+            loki_out = future_loki.result()
+
+        # Print their outputs
+        print(f"\n\x1b[1;35m[RAZIEL ({args.gemini_model})]\x1b[0m\n{raziel_out}")
+        print(f"\n\x1b[1;31m[LOKI ({args.openai_model})]\x1b[0m\n{loki_out}")
+
+        with open(state_path, "a") as f: 
+            f.write(f"\n{DELIMITER_GEMINI}\n{raziel_out}\n")
+            f.write(f"\n{DELIMITER_CODEX}\n{loki_out}\n")
+
+        # BETZALEL Turn (Synthesis)
+        betzalel_sys = f"ARCHITECTURAL_GUIDE:\n{betzalel_guide}\n\nINSTRUCTIONS:\n{base_instructions}"
+        betzalel_msg = f"Respond as {DELIMITER_CLAUDE}. CURRENT_STATE:\n{state}\nPLAN:\n{plan}\nRAZIEL_ANALYSIS: {raziel_out}\nLOKI_TRANSFORMATION: {loki_out}\nSYNTHESIZE BOTH INPUTS.\n"
+        betzalel_out = run_anthropic_api(betzalel_sys, betzalel_msg, "Betzalel", "36", anthropic_key, args.anthropic_model, True)
+        
+        with open(state_path, "a") as f: f.write(f"\n{DELIMITER_CLAUDE}\n{betzalel_out}\n")
 
         time.sleep(0.1)
 
