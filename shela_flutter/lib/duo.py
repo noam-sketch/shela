@@ -12,7 +12,7 @@ import re
 
 # Communication Config
 STATE_FILE = ".shela_duo_state.md"
-DELIMITER_USER0 = "<<<USER_HUMAN>>>"
+DELIMITER_CARBON = "<<<CARBON>>>"
 DELIMITER_USER1 = "<<<USER_GEMINI>>>"
 DELIMITER_USER2 = "<<<USER_CLAUDE>>>"
 DELIMITER_USER3 = "<<<USER_LOKI>>>"
@@ -150,22 +150,23 @@ def main():
         f"2. Use {DELIMITER_THOUGHT_STREAM} for rapid brainstorming.\n"
         f"3. Use {DELIMITER_HULT} to request human intervention.\n"
         f"4. Always prefix your response with your user delimiter.\n"
+        f"5. The human user is identified by the delimiter {DELIMITER_CARBON}.\n"
     )
 
     while True:
         with open(state_path, "r") as f: state = f.read()
         with open(brainstorm_file, "r") as f: plan = f.read()
 
-        user_input = input(f"\n\x1b[1;32m{DELIMITER_USER0}: \x1b[0m")
+        user_input = input(f"\n\x1b[1;32m{DELIMITER_CARBON}: \x1b[0m")
         if user_input.lower() == 'exit': break
-        with open(state_path, "a") as f: f.write(f"\n{DELIMITER_USER0}\n{user_input}\n")
+        with open(state_path, "a") as f: f.write(f"\n{DELIMITER_CARBON}\n{user_input}\n")
 
         # RAZIEL Turn
         raziel_prompt = (
             f"STYLE_GUIDE: {raziel_guide}\n\n"
             f"INSTRUCTIONS: {base_instructions}\n"
             f"Respond as {DELIMITER_USER1}. Task: Contribute to the project state.\n"
-            f"CURRENT_STATE:\n{state}\nPLAN:\n{plan}\nNEW_INPUT: {user_input}\n"
+            f"CURRENT_STATE:\n{state}\nPLAN:\n{plan}\nNEW_INPUT (from {DELIMITER_CARBON}): {user_input}\n"
         )
         raziel_out = run_agent_stream(["gemini", "-p", raziel_prompt, "-o", "text"], "Raziel", "35")
         with open(state_path, "a") as f: f.write(f"\n{DELIMITER_USER1}\n{raziel_out}\n")
