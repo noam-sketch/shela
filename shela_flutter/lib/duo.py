@@ -21,10 +21,11 @@ DELIMITER_THOUGHT = "<<<THOUGHT>>>"
 DELIMITER_THOUGHT_STREAM = "<<<THOUGHT_STREAM>>>"
 DELIMITER_HULT = "<<<HULT>>>"
 
-# Persona file paths (to be created by Dart code)
-GEMINI_PERSONA_FILE = os.path.join(os.path.expanduser('~'), '.local', 'share', 'shela', 'personas', 'gemini.md')
-CLAUDE_PERSONA_FILE = os.path.join(os.path.expanduser('~'), '.local', 'share', 'shela', 'personas', 'claude.md')
-LOKI_PERSONA_FILE = os.path.join(os.path.expanduser('~'), '.local', 'share', 'shela', 'personas', 'loki.md')
+# Persona file paths (created by Shela IDE)
+PERSONA_DIR = os.path.join(os.path.expanduser('~'), '.local', 'share', 'shela', 'personas')
+GEMINI_GUIDE = os.path.join(PERSONA_DIR, 'gemini.md')
+CLAUDE_GUIDE = os.path.join(PERSONA_DIR, 'claude.md')
+LOKI_GUIDE = os.path.join(PERSONA_DIR, 'loki.md')
 
 class DuoUI:
     def __init__(self):
@@ -80,8 +81,7 @@ def run_agent_stream(cmd_list, label, color_code, is_pty=False):
                     try:
                         data = os.read(fd, 1024).decode(errors='ignore')
                     except OSError as e:
-                        if e.errno == 5: # EIO (Input/Output Error) - child exited
-                            break
+                        if e.errno == 5: break
                         raise e
                     if not data: break
                     ui.stop()
@@ -94,7 +94,6 @@ def run_agent_stream(cmd_list, label, color_code, is_pty=False):
                             line = lines[-2]
                             if len(line) > 5: ui.update(f"{label}: {line[:40]}...")
                     ui.start(f"{label} is working")
-                    # Claude heuristic
                     if DELIMITER_USER1 in "".join(output[-50:]): break
                 if sys.stdin in r:
                     os.write(fd, os.read(sys.stdin.fileno(), 1024))
@@ -113,7 +112,6 @@ def run_agent_stream(cmd_list, label, color_code, is_pty=False):
                 sys.stdout.write(line)
                 sys.stdout.flush()
                 output.append(line)
-                
                 clean = line.strip()
                 if clean and not clean.startswith('<'):
                     ui.update(f"{label}: {clean[:50]}...")
@@ -124,111 +122,74 @@ def run_agent_stream(cmd_list, label, color_code, is_pty=False):
     return "".join(output)
 
 def main():
-    # Use current working directory for session files to keep them project-local
     cwd = os.getcwd()
     plan_dir = os.path.join(cwd, "plan")
     if not os.path.exists(plan_dir): os.makedirs(plan_dir)
-    
     brainstorm_file = os.path.join(plan_dir, "BRAINSTORM.md")
     if not os.path.exists(brainstorm_file):
         with open(brainstorm_file, "w") as f: f.write("# Project Brainstorm\n")
-
     state_path = os.path.join(cwd, STATE_FILE)
     if not os.path.exists(state_path):
         with open(state_path, "w") as f: f.write("# Duo Session State\n")
 
-    # Load personas from external files
-    gemini_persona = ""
-    if os.path.exists(GEMINI_PERSONA_FILE):
-        with open(GEMINI_PERSONA_FILE, "r") as f:
-            gemini_persona = f.read()
-    else:
-        print(f"\x1b[1;31mWarning: Gemini persona file not found at {GEMINI_PERSONA_FILE}\x1b[0m")
+    def load_guide(path, label):
+        if os.path.exists(path):
+            with open(path, "r") as f: return f.read()
+        return f"Standard {label} operations."
 
-    claude_persona = ""
-    if os.path.exists(CLAUDE_PERSONA_FILE):
-        with open(CLAUDE_PERSONA_FILE, "r") as f:
-            claude_persona = f.read()
-    else:
-        print(f"\x1b[1;31mWarning: Claude persona file not found at {CLAUDE_PERSONA_FILE}\x1b[0m")
-
-    loki_persona = ""
-    if os.path.exists(LOKI_PERSONA_FILE):
-        with open(LOKI_PERSONA_FILE, "r") as f:
-            loki_persona = f.read()
-    else:
-        print(f"\x1b[1;31mWarning: Loki persona file not found at {LOKI_PERSONA_FILE}\x1b[0m")
+    raziel_guide = load_guide(GEMINI_GUIDE, "Raziel")
+    betzalel_guide = load_guide(CLAUDE_GUIDE, "Betzalel")
+    loki_guide = load_guide(LOKI_GUIDE, "Loki")
 
     print(f"\n\x1b[1;33m[Shela Duo] Collaborative Multi-Agent Session Active.\x1b[0m")
-    print(f"\x1b[1;33mAll participants (Human, Gemini, Claude, Codex) will contribute to a shared context.\x1b[0m")
+    print(f"\x1b[1;33mFramework: RAZIEL (Precision) | BETZALEL (Structure) | LOKI (Transformation)\x1b[0m")
 
-    system_instructions = (
-        f"You MUST use the following delimiters for structured output:\n"
-        f"- Use {DELIMITER_THOUGHT} for internal logical reasoning or step-by-step analysis.\n"
-        f"- Use {DELIMITER_THOUGHT_STREAM} for rapid brainstorming, raw associations, or creative flow.\n"
-        f"- Use {DELIMITER_HULT} if you must halt the process and wait for explicit human intervention/clarification.\n"
-        f"- Always prefix your response with your specific user delimiter (e.g., {DELIMITER_USER1}).\n"
+    base_instructions = (
+        f"You are part of a multi-agent social-production circle. Adhere to these protocols:\n"
+        f"1. Use {DELIMITER_THOUGHT} for internal technical analysis.\n"
+        f"2. Use {DELIMITER_THOUGHT_STREAM} for rapid brainstorming.\n"
+        f"3. Use {DELIMITER_HULT} to request human intervention.\n"
+        f"4. Always prefix your response with your user delimiter.\n"
     )
 
     while True:
         with open(state_path, "r") as f: state = f.read()
         with open(brainstorm_file, "r") as f: plan = f.read()
 
-        # Human's turn
         user_input = input(f"\n\x1b[1;32m{DELIMITER_USER0}: \x1b[0m")
-        if user_input.lower() == 'exit':
-            print("\x1b[1;33m[Shela Duo] Session terminated by human.\x1b[0m")
-            break
-        
-        # Append human input to state
-        with open(state_path, "a") as f:
-            f.write(f"\n{DELIMITER_USER0}\n{user_input}\n")
+        if user_input.lower() == 'exit': break
+        with open(state_path, "a") as f: f.write(f"\n{DELIMITER_USER0}\n{user_input}\n")
 
-        # Gemini's turn
-        gemini_prompt = (
-            f"PERSONA: {gemini_persona}\n\n"
-            f"INSTRUCTIONS: {system_instructions}\n\n"
-            f"CONTEXT: You are Gemini. The current state of the conversation and plan is:\n"
-            f"STATE:\n{state}\n"
-            f"PLAN:\n{plan}\n"
-            f"Your role is to contribute to the task. Respond as {DELIMITER_USER1}.\n"
-            f"If there's nothing new to add, respond with a short acknowledgement or pass.\n"
-            f"Conversation History:\n{state}\n{DELIMITER_USER0}\n{user_input}\n"
+        # RAZIEL Turn
+        raziel_prompt = (
+            f"STYLE_GUIDE: {raziel_guide}\n\n"
+            f"INSTRUCTIONS: {base_instructions}\n"
+            f"Respond as {DELIMITER_USER1}. Task: Contribute to the project state.\n"
+            f"CURRENT_STATE:\n{state}\nPLAN:\n{plan}\nNEW_INPUT: {user_input}\n"
         )
-        gemini_out = run_agent_stream(["gemini", "-p", gemini_prompt, "-o", "text"], "Gemini", "35")
-        with open(state_path, "a") as f:
-            f.write(f"\n{DELIMITER_USER1}\n{gemini_out}\n")
+        raziel_out = run_agent_stream(["gemini", "-p", raziel_prompt, "-o", "text"], "Raziel", "35")
+        with open(state_path, "a") as f: f.write(f"\n{DELIMITER_USER1}\n{raziel_out}\n")
 
-        # Claude's turn
-        claude_prompt = (
-            f"PERSONA: {claude_persona}\n\n"
-            f"INSTRUCTIONS: {system_instructions}\n\n"
-            f"CONTEXT: You are Claude. The current state of the conversation and plan is:\n"
-            f"STATE:\n{state}\n"
-            f"PLAN:\n{plan}\n"
-            f"Your role is to contribute to the task. Respond as {DELIMITER_USER2}.\n"
-            f"If there's nothing new to add, respond with a short acknowledgement or pass.\n"
-            f"Conversation History:\n{state}\n{DELIMITER_USER0}\n{user_input}\n{DELIMITER_USER1}\n{gemini_out}\n"
+        # BETZALEL Turn
+        betzalel_prompt = (
+            f"ARCHITECTURAL_GUIDE: {betzalel_guide}\n\n"
+            f"INSTRUCTIONS: {base_instructions}\n"
+            f"Respond as {DELIMITER_USER2}. Task: Review structure and suggest changes.\n"
+            f"CURRENT_STATE:\n{state}\nPLAN:\n{plan}\nLAST_UPDATE: {raziel_out}\n"
         )
-        claude_cmd = ["npx", "-y", "@anthropic-ai/claude-code", "--continue", "--print", claude_prompt]
-        claude_out = run_agent_stream(claude_cmd, "Claude", "36", is_pty=True)
-        with open(state_path, "a") as f:
-            f.write(f"\n{DELIMITER_USER2}\n{claude_out}\n")
+        betzalel_cmd = ["npx", "-y", "@anthropic-ai/claude-code", "--continue", "--print", betzalel_prompt]
+        betzalel_out = run_agent_stream(betzalel_cmd, "Betzalel", "36", is_pty=True)
+        with open(state_path, "a") as f: f.write(f"\n{DELIMITER_USER2}\n{betzalel_out}\n")
 
-        # Loki's turn
+        # LOKI Turn
         loki_prompt = (
-            f"PERSONA: {loki_persona}\n\n"
-            f"INSTRUCTIONS: {system_instructions}\n\n"
-            f"CONTEXT: You are Codex (Loki). The current state of the conversation and plan is:\n"
-            f"STATE:\n{state}\n"
-            f"PLAN:\n{plan}\n"
-            f"Your role is to contribute to the task. Respond as {DELIMITER_USER3}.\n"
-            f"If there's nothing new to add, respond with a short acknowledgement or pass.\n"
-            f"Conversation History:\n{state}\n{DELIMITER_USER0}\n{user_input}\n{DELIMITER_USER1}\n{gemini_out}\n{DELIMITER_USER2}\n{claude_out}\n"
+            f"CREATIVE_GUIDE: {loki_guide}\n\n"
+            f"INSTRUCTIONS: {base_instructions}\n"
+            f"Respond as {DELIMITER_USER3}. Task: Transform and push boundaries.\n"
+            f"CURRENT_STATE:\n{state}\nPLAN:\n{plan}\nPREVIOUS_INPUT: {betzalel_out}\n"
         )
         loki_out = run_agent_stream(["codex", loki_prompt], "Loki", "31")
-        with open(state_path, "a") as f:
-            f.write(f"\n{DELIMITER_USER3}\n{loki_out}\n")
+        with open(state_path, "a") as f: f.write(f"\n{DELIMITER_USER3}\n{loki_out}\n")
 
         time.sleep(0.1)
 
