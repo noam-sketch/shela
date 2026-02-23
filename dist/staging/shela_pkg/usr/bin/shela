@@ -1,0 +1,3 @@
+#!/bin/bash
+# Shela IDE Wrapper
+/usr/lib/shela/shela "$@"

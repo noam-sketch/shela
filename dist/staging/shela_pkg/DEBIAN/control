@@ -1,0 +1,10 @@
+Package: shela-ide
+Version: 1.3.0
+Section: utils
+Priority: optional
+Architecture: amd64
+Maintainer: Noam <noam@coherences.io>
+Depends: libgtk-3-0, liblzma5, python3, python3-pip, curl
+Description: Shela IDE - An AI-integrated, autonomous terminal and workspace.
+ An IDE designed for continuous autonomous execution using the WTLTTILTRLTBR kata.
+ Includes multi-agent support (Mozart, Q, EXE, Loki, Betzalel) and deep cloud integrations.
