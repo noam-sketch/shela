@@ -134,12 +134,12 @@ class _ShelaAppState extends State<ShelaApp> {
     setState(() { 
       if (themeName != null) _currentThemeName = themeName; 
       if (fontSize != null) _globalFontSize = fontSize; 
-      if (geminiKey != null) { geminiKey = geminiKey; _fetchGeminiModels(); } 
+      if (geminiKey != null) { this.geminiKey = geminiKey; _fetchGeminiModels(); } 
       if (geminiModel != null) selectedGeminiModel = geminiModel;
-      if (carbonEmail != null) carbonEmail = carbonEmail;
-      if (carbonPictureUrl != null) carbonPictureUrl = carbonPictureUrl;
-      if (collaborators != null) collaborators = collaborators;
-      if (firebaseConfigJson != null) { firebaseConfigJson = firebaseConfigJson; _initFirebase(); }
+      if (carbonEmail != null) this.carbonEmail = carbonEmail;
+      if (carbonPictureUrl != null) this.carbonPictureUrl = carbonPictureUrl;
+      if (collaborators != null) this.collaborators = collaborators;
+      if (firebaseConfigJson != null) { this.firebaseConfigJson = firebaseConfigJson; _initFirebase(); }
     });
     _saveSettings();
   }
@@ -1204,7 +1204,7 @@ class CloudPanel extends StatelessWidget {
           ListTile(leading: const Icon(Icons.grid_view, size: 16), title: const Text('K8s Get All'), dense: true, onTap: () => onCommand(' kubectl get all')),
         ]),
         _buildSection(context, 'AI & LLM', Colors.purpleAccent, [
-          ListTile(leading: const Icon(Icons.auto_awesome, size: 16), title: const Text('Gemini Login'), dense: true, onTap: () => onCommand(' clear; gemini auth login')),
+          ListTile(leading: const Icon(Icons.auto_awesome, size: 16), title: const Text('Gemini Login'), dense: true, onTap: () => onCommand(' clear; gemini auth')),
           ListTile(leading: const Icon(Icons.model_training, size: 16), title: const Text('List Models'), dense: true, onTap: () => onCommand(' gemini models list')),
         ]),
       ]),

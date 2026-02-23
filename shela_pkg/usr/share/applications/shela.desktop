@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=Shela IDE
+Comment=AI-integrated, autonomous terminal and workspace
+Exec=shela
+Icon=shela
+Terminal=false
+Type=Application
+Categories=Development;IDE;
+Keywords=AI;Terminal;Autonomous;

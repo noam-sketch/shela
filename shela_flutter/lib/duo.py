@@ -17,6 +17,10 @@ try:
     from rich.console import Console
     from rich.markdown import Markdown, CodeBlock
     from rich.syntax import Syntax
+    from rich.panel import Panel
+    from rich.live import Live
+    from rich.text import Text
+    from rich.json import JSON
     import io
 
     class MyCodeBlock(CodeBlock):
@@ -32,9 +36,51 @@ try:
 except ImportError:
     HAS_RICH = False
 
+class ResponseFormatter:
+    def __init__(self, console):
+        self.console = console
+
+    def format(self, text, label, color_code):
+        if not HAS_RICH:
+            # Fallback for no rich
+            sys.stdout.write(f"\x1b[{color_code}m{text}\x1b[0m\n")
+            return
+
+        summary = ""
+        summary_match = re.search(rf"{DELIMITER_SUMMARY}(.*?){DELIMITER_END_SUMMARY}", text, re.DOTALL)
+        if summary_match:
+            summary = summary_match.group(1).strip()
+        
+        display_text = strip_delimiters(text)
+        
+        content = None
+        # Try to parse as JSON for specialized formatting
+        try:
+            # Only try parsing if it looks like JSON (starts with { or [)
+            stripped_display = display_text.strip()
+            if stripped_display.startswith('{') or stripped_display.startswith('['):
+                json.loads(stripped_display)
+                content = JSON(stripped_display)
+        except:
+            pass
+
+        if content is None:
+            content = Markdown(display_text)
+
+        panel = Panel(
+            content,
+            title=f"[bold]{label}[/bold]",
+            subtitle=f"[dim]{summary}[/dim]" if summary else None,
+            border_style=f"color({color_code.split(';')[-1]})" if ";" in color_code else "blue",
+            padding=(1, 2)
+        )
+        self.console.print(panel)
+
 try:
     from bidi.algorithm import get_display
 except ImportError:
+# ... (rest of imports unchanged)
+
     try:
         subprocess.check_call([sys.executable, "-m", "pip", "install", "python-bidi", "--quiet", "--break-system-packages"])
         from bidi.algorithm import get_display
@@ -130,13 +176,23 @@ class DuoUI:
         self.tips_manager = tips_manager
         self._tick_count = 0
         self._current_tip = "Initializing Knowledge Stream..."
+        self.status_queue = []
+
+    def update_status(self, message):
+        with self._lock:
+            self.status_queue.append(message)
 
     def _spin(self):
         while not self.stop_spinner.is_set():
-            if self._tick_count % 100 == 0:  # Every 10 seconds
-                new_tip = self.tips_manager.get_tip()
-                if new_tip:
-                    self._current_tip = new_tip
+            # Check for high-priority status updates from agents
+            if self._tick_count % 10 == 0: # Check every second
+                with self._lock:
+                    if self.status_queue:
+                        self._current_tip = self.status_queue.pop(0)
+                    elif self._tick_count % 100 == 0: # Every 10s fallback to random tips
+                        new_tip = self.tips_manager.get_tip()
+                        if new_tip:
+                            self._current_tip = new_tip
             
             cols = shutil.get_terminal_size((80, 20)).columns
             max_len = max(10, cols - 10)
@@ -166,6 +222,8 @@ class DuoUI:
                         self._spinner_thread = None
 
 ui_spinner = None
+rich_console = Console(force_terminal=True) if HAS_RICH else None
+response_formatter = ResponseFormatter(rich_console) if HAS_RICH else None
 
 def write_usage(agent, status, usage_str, model):
     try:
@@ -216,7 +274,9 @@ def run_gemini_api(system_prompt, message_content, label, color_code, api_key, m
     if stream: 
         delim_type = f"<<<{label.split()[-1].upper()}>>>"
         print(f"\n{colorize_delimiter(delim_type, label, color_code)}")
-    if ui_spinner: ui_spinner.start(label)
+    if ui_spinner:
+        ui_spinner.update_status(f"{label} is reflecting...")
+        ui_spinner.start(label)
     payload = {"system_instruction": {"parts": [{"text": system_prompt}]}, "contents": [{"parts": [{"text": message_content}]}]}
     m_name = model if model.startswith("models/") else f"models/{model}"
     url = f"https://generativelanguage.googleapis.com/v1beta/{m_name}:generateContent?key={api_key}"
@@ -245,38 +305,12 @@ def _execute_curl(cmd, data, ui, stream=True, color_code="0", label="unknown", m
         if text:
             text = unicodedata.normalize('NFC', text)
             
-            summary = ""
-            summary_match = re.search(rf"{DELIMITER_SUMMARY}(.*?){DELIMITER_END_SUMMARY}", text, re.DOTALL)
-            if summary_match:
-                summary = summary_match.group(1).strip()
-            
-            display_text = strip_delimiters(text)
-
             if stream:
-                if summary:
-                    sys.stdout.write(f"\n\x1b[1;37;44m 📝 SUMMARY: {summary} \x1b[0m\n")
-                    sys.stdout.flush()
-                    time.sleep(0.5)
-
-                if HAS_RICH and display_text:
-                    try:
-                        f = io.StringIO()
-                        cols = shutil.get_terminal_size((80, 20)).columns
-                        c = Console(file=f, force_terminal=True, width=cols)
-                        c.print(Markdown(display_text))
-                        rendered = f.getvalue()
-                        
-                        sys.stdout.write(f"\x1b[{color_code}m")
-                        for char in rendered:
-                            sys.stdout.write(char)
-                            sys.stdout.flush()
-                            time.sleep(0.0001)
-                        sys.stdout.write("\x1b[0m\n")
-                        return text
-                    except Exception: pass
-                
-                # Fallback to simple streaming
-                if display_text:
+                if HAS_RICH:
+                    response_formatter.format(text, label, color_code)
+                else:
+                    # Fallback to simple streaming
+                    display_text = strip_delimiters(text)
                     try: 
                         lines = display_text.split('\n')
                         display_text = '\n'.join([get_display(line) for line in lines])
@@ -328,7 +362,9 @@ def execute_agent_commands(text, label, state_path):
 
 def wait_for_child_processes(state_path, last_pos=None):
     global ui_spinner
-    if ui_spinner: ui_spinner.start("Execution")
+    if ui_spinner:
+        ui_spinner.update_status("Waiting for child process completion...")
+        ui_spinner.start("Execution")
     print(f"\n\x1b[1;33m[System] Waiting for child process completion (EXE_DONE)...\x1b[0m")
     
     if last_pos is None:
@@ -365,7 +401,7 @@ def main():
     parser.add_argument("--carbon-id", default="")
     args = parser.parse_args()
 
-    gemini_key = args.gemini_key or os.environ.get("GEMINI_API_KEY")
+    gemini_key = args.gemini_key
     gemini_model = args.gemini_model or os.environ.get("GEMINI_MODEL") or "gemini-1.5-flash"
 
     tips_manager = TipsManager(gemini_key, gemini_model)
