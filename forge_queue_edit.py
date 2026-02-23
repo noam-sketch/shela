@@ -1,4 +1,3 @@
-import os
 
 def pour_editable_glass(filename: str):
     html = """<!DOCTYPE html>
@@ -137,10 +136,10 @@ def pour_editable_glass(filename: str):
 
 if __name__ == "__main__":
     out = pour_editable_glass("editable_workspace.html")
-    print(f"==========================================")
-    print(f"   MOVEMENT XIII: ERRATA MANAGER FORGED   ")
+    print("==========================================")
+    print("   MOVEMENT XIII: ERRATA MANAGER FORGED   ")
     print("==========================================")
     print(f"-> Glass Slab Cast: {out}")
-    print(f"-> Feature: CWD and Close bound to Tab Title.")
-    print(f"-> Feature: Kinetic Edit/Recall Icon active.")
+    print("-> Feature: CWD and Close bound to Tab Title.")
+    print("-> Feature: Kinetic Edit/Recall Icon active.")
     print("==========================================")

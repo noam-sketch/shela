@@ -43,6 +43,11 @@ All shell commands are delegated to background child processes by the Flutter UI
 Shela operates under the **WTLTTILTRLTBR Kata**:
 1. **W**rite Tests -> 2. **L**int Tests -> 3. **T**est -> 4. **I**mplement -> 5. **L**int -> 6. **T**est -> 7. **R**efactor -> 8. **L**int -> 9. **T**est -> 10. **B**uild -> 11. **R**un.
 
+**Strategic Alignment**:
+- All development begins with a strategy documented in the `plan/` directory.
+- **`BRAINSTORM.md`** serves as the master index for all active and archived plans.
+- Refer to `plan/current_task.md` for the roadmap of the immediate implementation cycle.
+
 Agents follow strict **Human-in-the-Loop (HULT)** protocols, pausing for confirmation after process spawning or Kata cycles.
 
 ## Installation (Linux)

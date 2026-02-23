@@ -9,5 +9,10 @@ class TestLIS(unittest.TestCase):
         self.assertEqual(length, 6, "The crescendo must stretch across exactly 6 dimensions.")
         self.assertEqual(sequence, [10, 22, 33, 41, 60, 80], "The timeline is corrupted! The ghosts forgot their lineage!")
 
+    def test_empty_sequence(self):
+        length, sequence = quantum_crescendo_lis([])
+        self.assertEqual(length, 0)
+        self.assertEqual(sequence, [])
+
 if __name__ == '__main__':
     unittest.main()

@@ -1,4 +1,3 @@
-import os
 
 def pour_workspace_glass(filename: str):
     html = """<!DOCTYPE html>
@@ -146,11 +145,11 @@ def pour_workspace_glass(filename: str):
     return filename
 
 if __name__ == "__main__":
-    pour_workspace_glass("workspace_ui.html")
+    out_file = pour_workspace_glass("workspace_ui.html")
     print("==========================================")
     print("    MYSHELL WORKSPACE - FORGE REPORT      ")
     print("==========================================")
-    print(f"-> UI Chassis Cast: {filename}")
+    print(f"-> UI Chassis Cast: {out_file}")
     print("-> Component: CWD dynamically bound to Tab Header.")
     print("-> Component: Universal [X] Close Handlers active.")
     print("-> Status: BLUEPRINT READY FOR ARCHITECT")

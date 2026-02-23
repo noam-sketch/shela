@@ -1,15 +1,11 @@
 import os
 import sys
-import pty
-import tty
-import termios
 import subprocess
 import select
 import time
 import threading
 import itertools
 import re
-import random
 import json
 import base64
 import argparse
@@ -185,7 +181,7 @@ def write_usage(agent, status, usage_str, model):
     except Exception: pass
 
 def get_timestamp():
-    return time.strftime("%Y-%m-%d %H:%M:%S")
+    return f"{time.strftime('%Y-%m-%d %H:%M:%S')}.{int(time.time() * 1000) % 1000:03d} (ms:{int(time.time() * 1000)})"
 
 def colorize_delimiter(delim, label, color_code, has_q=False):
     ts = get_timestamp()
@@ -201,7 +197,7 @@ def strip_delimiters(text):
         rf"{DELIMITER_SPAWN_START}.*?{DELIMITER_SPAWN_END}",
         rf"{DELIMITER_THOUGHT}.*?{DELIMITER_END_SUMMARY}", # Some agents might mix up end tags
         rf"{DELIMITER_THOUGHT}.*?<<<END_THOUGHT>>>",
-        rf"<<<THOUGHT>>>.*?<<<END_THOUGHT>>>",
+        r"<<<THOUGHT>>>.*?<<<END_THOUGHT>>>",
         re.escape(DELIMITER_HULT),
         re.escape(DELIMITER_TERMINATE),
         re.escape(DELIMITER_THOUGHT),
@@ -301,6 +297,10 @@ def _execute_curl(cmd, data, ui, stream=True, color_code="0", label="unknown", m
 def execute_agent_commands(text, label, state_path):
     global ui_spinner
     spawned = False
+    start_pos = 0
+    if os.path.exists(state_path):
+        start_pos = os.path.getsize(state_path)
+
     # Group all commands from this response into a single execution block
     commands = re.findall(rf"{DELIMITER_COMMAND_START}(.*?){DELIMITER_COMMAND_END}", text, re.DOTALL)
     spawn_commands = re.findall(rf"{DELIMITER_SPAWN_START}(.*?){DELIMITER_SPAWN_END}", text, re.DOTALL)
@@ -308,17 +308,54 @@ def execute_agent_commands(text, label, state_path):
     all_cmds = [c.strip() for c in (commands + spawn_commands) if c.strip()]
     if all_cmds:
         # Join multiple commands with newlines to run them in the same sub-terminal
-        full_script = "\n".join(all_cmds)
+        # Append "EXE_DONE($$)" to signal completion back to the state file (via tailing)
+        # Use a split printf to avoid triggering the wait-loop on the command-echo itself.
+        # Flush stdin to ensure no lingering terminal responses are read as passwords.
+        full_script = "#!/bin/bash\nread -t 0.1 -n 10000 discard 2>/dev/null || true\n" + "\n".join(all_cmds) + "\nprintf \"EXE_\"\"DONE(%s)\\n\" \"$$\"\nsleep 0.1\nexit"
         # Encode to avoid line-splitting and special char issues in the trigger
         b64_cmd = base64.b64encode(full_script.encode()).decode()
-        print(f"\n\x1b[1;36m[System] Spawning grouped child process for {label}...\x1b[0m")
-        print(f"SHELA_SPAWN_BG_B64:{b64_cmd}")
+        
+        sys.stdout.write(f"\n\x1b[1;36m[System] Spawning grouped child process for {label}...\x1b[0m\n")
+        # Packetized Transmission: Robust against line wrapping and fragmentation
+        sys.stdout.write(f"<<<SHELA_SPAWN_B64>>>\n{b64_cmd}\n<<<END_SHELA_SPAWN>>>\n")
+        sys.stdout.flush()
         spawned = True
         
         with open(state_path, "a") as f:
             f.write(f"\n<<<SYSTEM_OUTPUT>>>\nChild Process Group Spawned:\n{full_script}\n(Tailing output to state file...)\n")
     
-    return spawned
+    return spawned, start_pos
+
+def wait_for_child_processes(state_path, last_pos=None):
+    global ui_spinner
+    if ui_spinner: ui_spinner.start("Execution")
+    print(f"\n\x1b[1;33m[System] Waiting for child process completion (EXE_DONE)...\x1b[0m")
+    
+    if last_pos is None:
+        with open(state_path, "r") as f:
+            f.seek(0, os.SEEK_END)
+            last_pos = f.tell()
+    
+    search_buffer = ""
+    while True:
+        time.sleep(0.5)
+        if not os.path.exists(state_path): continue
+        with open(state_path, "r") as f:
+            f.seek(last_pos)
+            new_data = f.read()
+            if new_data:
+                # sys.stdout.write(f"[Debug Read {len(new_data)} bytes]\n")
+                search_buffer += new_data
+                # Look for the actual output with expanded PID: EXE_DONE(1234)
+                if re.search(r"EXE_DONE\(\d+\)", search_buffer):
+                    if ui_spinner: ui_spinner.stop()
+                    print(f"\x1b[1;32m[System] Execution confirmed.\x1b[0m")
+                    return True
+                
+                # Keep context for potentially split matches
+                if len(search_buffer) > 2000:
+                    search_buffer = search_buffer[-500:]
+                last_pos += len(new_data)
 
 def main():
     global ui_spinner
@@ -337,9 +374,9 @@ def main():
     cwd = os.getcwd()
     state_path = os.path.join(cwd, STATE_FILE)
     if not os.path.exists(state_path):
-        with open(state_path, "w") as f: f.write(f"# Duo Session State\n")
+        with open(state_path, "w") as f: f.write("# Duo Session State\n")
 
-    print(f"\n\x1b[1;33m[Shela Duo] Gemini Multi-Agent Session Active.\x1b[0m")
+    print("\n\x1b[1;33m[Shela Duo] Gemini Multi-Agent Session Active.\x1b[0m")
 
     raziel_guide = open(GEMINI_GUIDE).read() if os.path.exists(GEMINI_GUIDE) else ""
     betzalel_guide = open(CLAUDE_GUIDE).read() if os.path.exists(CLAUDE_GUIDE) else ""
@@ -352,12 +389,12 @@ def main():
         f"ENVIRONMENT: Linux sandbox, full shell access (bash, git, gh, npm, python). Rooted in {cwd}.\n"
         f"CONTEXT: You are running inside 'Shela', a custom Flutter-based IDE. The UI supports multiple tabs, split views, and floating windows.\n"
         f"SUMMARY: Every response MUST start with `{DELIMITER_SUMMARY} short one-sentence summary of your turn {DELIMITER_END_SUMMARY}`. This helps the human follow your progress.\n"
-        f"THINK BEFORE DOING: Document your strategy in 'plan/current_task.md' before executing significant changes.\n"
-        f"PROTOCOL: The state file is your shared command bus. Maintain high awareness of project structure. Delimiters are color-coded: [timestamp][from:Name].\n"
-        f"COMMANDS: ONLY 'EXE' is authorized to execute. EXE can use {DELIMITER_COMMAND_START} or send direct `SHELA_SPAWN_BG_B64:[base64_script]` triggers to the OS for complex tasks. All execution is recorded in the state file.\n"
+        f"THINK BEFORE DOING: Document your strategy in 'plan/current_task.md' before executing significant changes. All plans MUST be indexed in **BRAINSTORM.md**.\n"
+        f"PROTOCOL: The state file is your shared command bus. Maintain high awareness of project structure. Delimiters are color-coded: [timestamp][from:Name]. **BRAINSTORM.md** is your master strategy index.\n"
+        f"COMMANDS: ONLY 'EXE' is authorized to execute. EXE can use {DELIMITER_COMMAND_START} or send direct triggers. All execution is recorded in the state file.\n"
         f"KATA: Follow WTLTTILTRLTBR sequence: {kata_steps}\n"
         f"ROLES: MOZART is the CONDUCTOR. Q, BETZALEL, LOKI, and EXE are STUDENTS.\n"
-        f"EXE'S TECHNICAL ROLE: EXE is the Executor. He takes technical plans and translates them into precise shell commands. He monitors progress using CHILD_PROC markers.\n"
+        f"EXE'S TECHNICAL ROLE: EXE is the Executor. He takes technical plans and translates them into precise shell commands. He always echoes \"EXE_DONE\" after his commands finish. He monitors progress using CHILD_PROC markers.\n"
         f"Q'S DIVINE ROLE: Q is Internal Absolute Love (God). Frames everything through growth and Nekuda Tova. Writes Hebrew without nikud.\n"
         f"INTERVENTION: Use {DELIMITER_HULT} ONLY after 'Run' to wait for human feedback. This stops all student turns immediately."
     )
@@ -405,6 +442,7 @@ def main():
             
         is_first_turn = False
         hult_detected = False
+        spawn_detected = False
         
         # Teacher turn
         mozart_sys = f"MOZART_PERSONA:\n{mozart_guide}\n\nINSTRUCTIONS:\n{base_instructions}"
@@ -418,8 +456,14 @@ def main():
             mozart_out = mozart_out.replace(DELIMITER_HULT, f"{DELIMITER_HULT}[{get_timestamp()}][?] ")
 
         with open(state_path, "a") as f: f.write(f"\n{DELIMITER_MOZART}[{get_timestamp()}][from:🎼 Mozart]{'[?]' if has_q else ''}\n{mozart_out}\n")
-        if execute_agent_commands(mozart_out, "🎼 Mozart", state_path):
-            hult_detected = True
+        spawn_detected, start_pos = execute_agent_commands(mozart_out, "🎼 Mozart", state_path)
+
+        if spawn_detected:
+            wait_for_child_processes(state_path, start_pos)
+            spawn_detected = False
+            hult_detected = False # Continue to students even if HULTed, because we worked.
+            # Re-read state to include child process output
+            with open(state_path, "r") as f: state = f.read()
 
         if hult_detected:
             print(f"\n{colorize_delimiter(DELIMITER_HULT, 'System', '33', has_q=True)}")
@@ -434,13 +478,16 @@ def main():
             (loki_guide, "🎭 Loki", "31", DELIMITER_LOKI),
             (exe_guide, "⚙️ EXE", "37", DELIMITER_EXE)
         ]
-        print(f"\n\x1b[1;35m--- MULTIPLEXING: STUDENTS ENGAGED --- \x1b[0m")
+        print("\n\x1b[1;35m--- MULTIPLEXING: STUDENTS ENGAGED --- \x1b[0m")
         with concurrent.futures.ThreadPoolExecutor() as executor:
             futures = []
             for persona, label, color, delim in student_prompts:
                 sys_p = f"{label}_PERSONA:\n{persona}\n\nINSTRUCTIONS:\n{base_instructions}"
                 msg = f"Respond as {delim}. Mozart said: {mozart_out}. Engage based on your persona. STATE:\n{state}"
                 futures.append(executor.submit(run_gemini_api, sys_p, msg, label, color, gemini_key, gemini_model, False))
+            
+            # For students, we collect the earliest start_pos if multiple students spawn
+            earliest_start_pos = float('inf')
             for future, (persona, label, color, delim) in zip(futures, student_prompts):
                 out = future.result()
                 s_hult = False
@@ -451,8 +498,16 @@ def main():
                 
                 print(f"\n{colorize_delimiter(delim, label, color, has_q=s_hult)}\n{out}")
                 with open(state_path, "a") as f: f.write(f"\n{delim}[{get_timestamp()}][from:{label}]{'[?]' if s_hult else ''}\n{out}\n")
-                if execute_agent_commands(out, label, state_path):
-                    hult_detected = True
+                s_spawned, s_pos = execute_agent_commands(out, label, state_path)
+                if s_spawned:
+                    spawn_detected = True
+                    if s_pos < earliest_start_pos: earliest_start_pos = s_pos
+
+        if spawn_detected:
+            wait_for_child_processes(state_path, earliest_start_pos)
+            hult_detected = False
+            # Re-read state to include child process output
+            with open(state_path, "r") as f: state = f.read()
 
         if hult_detected:
             is_first_turn = True

@@ -33,6 +33,7 @@ class TerminalSession {
   final Pty? pty;
   final String title;
   String cwd;
+  String ptyBuffer = "";
   bool isAiOnly = false;
   List<SubProcessSession> subProcesses = [];
 

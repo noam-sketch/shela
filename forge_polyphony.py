@@ -1,4 +1,3 @@
-import os
 
 def pour_polyphonic_glass(filename: str):
     html = """<!DOCTYPE html>

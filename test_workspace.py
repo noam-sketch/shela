@@ -14,9 +14,9 @@ class TestWorkspaceArchitecture(unittest.TestCase):
         with open(filename, 'r', encoding='utf-8') as f:
             content = f.read()
             # Assert Betzalel's Iron
-            self.assertIn('class="tab-bar"', content, "Missing the main tab manifold!")
-            self.assertIn('class="close-btn"', content, "Missing the Coda (Close Button)!")
-            self.assertIn('class="cwd-label"', content, "Missing the CWD Key Signature!")
+            self.assertIn('id="tab-bar"', content, "Missing the main tab manifold!")
+            self.assertIn('.close-btn', content, "Missing the Coda (Close Button)!")
+            self.assertIn('.cwd-label', content, "Missing the CWD Key Signature!")
             # Assert Raziel's Breath
             self.assertIn('function closeTab', content, "State collapse logic missing!")
             self.assertIn('function renderTabs', content, "State rendering logic missing!")

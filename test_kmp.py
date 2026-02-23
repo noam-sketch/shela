@@ -19,5 +19,8 @@ class TestEchoMemory(unittest.TestCase):
         pattern = "DISSONANCE"
         self.assertEqual(kmp_search(text, pattern), [], "Hallucinated an echo that does not exist.")
 
+    def test_empty_pattern(self):
+        self.assertEqual(kmp_search("ANYTHING", ""), [], "The void should match nothing.")
+
 if __name__ == '__main__':
     unittest.main()

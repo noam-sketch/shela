@@ -46,7 +46,6 @@ class ShelaOS:
 
 if __name__ == "__main__":
     import time
-    import sys
     
     # ANSI Colors for Loki's theatrics
     GREEN = '\033[92m'

@@ -1,7 +1,5 @@
 import unittest
 from duo import TipsManager, DuoUI
-import threading
-import time
 
 class MockTipsManager:
     def __init__(self):

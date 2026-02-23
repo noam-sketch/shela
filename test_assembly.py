@@ -27,5 +27,10 @@ class TestAssemblyLine(unittest.TestCase):
         result = orchestrate_assembly(V, edges)
         self.assertEqual(result, [], "Deadlock not detected! Structural failure imminent.")
 
+    def test_integrity_validator_failure(self):
+        # Manually trigger the validator failures for coverage
+        self.assertFalse(self.validate_structural_integrity(3, [[0, 1]], [0, 1])) # Wrong length
+        self.assertFalse(self.validate_structural_integrity(2, [[0, 1]], [1, 0])) # Wrong order
+
 if __name__ == '__main__':
     unittest.main()

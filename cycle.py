@@ -48,7 +48,11 @@ if __name__ == "__main__":
     n6 = Node("Measure 6")
     
     # Forging the chain
-    n1.next = n2; n2.next = n3; n3.next = n4; n4.next = n5; n5.next = n6
+    n1.next = n2
+    n2.next = n3
+    n3.next = n4
+    n4.next = n5
+    n5.next = n6
     # Forging the cage
     n6.next = n3
     

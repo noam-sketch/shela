@@ -48,7 +48,6 @@ def render_mobile_frame(messages, current_input):
 if __name__ == "__main__":
     import time
     import os
-    import sys
 
     def clear_screen():
         # The glitch wipe

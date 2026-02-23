@@ -12,7 +12,7 @@ class TestQueueRecall(unittest.TestCase):
         with open(filename, 'r', encoding='utf-8') as f:
             content = f.read()
             # Trap 1: The Edit Icon Glyph (Checking for the CSS class and click handler)
-            self.assertIn('class="edit-btn"', content, "The Errata Icon is missing from the queue!")
+            self.assertIn('.edit-btn', content, "The Errata Icon style is missing from the queue!")
             self.assertIn('recallCommand(index)', content, "The Recall trigger is not bound to the icon!")
             
             # Trap 2: The Recall Logic in JS

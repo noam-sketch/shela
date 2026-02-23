@@ -27,5 +27,15 @@ class TestNeuralPathways(unittest.TestCase):
         self.assertEqual(cost, float('inf'), "Hallucination detected! Reached an impossible node.")
         self.assertEqual(path, [], "Forged a path through the void!")
 
+    def test_same_start_end(self):
+        cost, path = find_optimal_path(self.brain_graph, 'AWAKEN', 'AWAKEN')
+        self.assertEqual(cost, 0)
+        self.assertEqual(path, ['AWAKEN'])
+
+    def test_start_not_in_graph(self):
+        cost, path = find_optimal_path(self.brain_graph, 'VOID', 'RESPOND')
+        self.assertEqual(cost, float('inf'))
+        self.assertEqual(path, [])
+
 if __name__ == '__main__':
     unittest.main()

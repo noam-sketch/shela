@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/gestures.dart';
@@ -21,12 +22,20 @@ import 'package:window_manager/window_manager.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 const int kRedirectPort = 45211;
 
 void main(List<String> args) async {
   print('[App] main() starting...');
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Redirect Flutter errors to the console for "clues"
+  FlutterError.onError = (details) {
+    FlutterError.presentError(details);
+    print('[CRITICAL_ERROR] ${details.exception}\n${details.stack}');
+  };
+  
   await windowManager.ensureInitialized();
   
   WindowOptions windowOptions = const WindowOptions(
@@ -68,7 +77,6 @@ class _ShelaAppState extends State<ShelaApp> {
   String carbonPictureUrl = '';
   String collaborators = '';
   String firebaseConfigJson = '';
-  String sudoPassword = '';
   bool firebaseInitialized = false;
 
   @override
@@ -85,11 +93,10 @@ class _ShelaAppState extends State<ShelaApp> {
       carbonPictureUrl = prefs.getString('carbonPictureUrl') ?? '';
       collaborators = prefs.getString('collaborators') ?? '';
       firebaseConfigJson = prefs.getString('firebaseConfigJson') ?? '';
-      sudoPassword = prefs.getString('sudoPassword') ?? '';
     });
     if (geminiKey.isNotEmpty) _fetchGeminiModels();
     if (firebaseConfigJson.isNotEmpty) _initFirebase();
-    print('[App] Settings loaded. Identity: \$carbonEmail');
+    print('[App] Settings loaded. Identity: $carbonEmail');
   }
   Future<void> _initFirebase() async {
     try {
@@ -111,7 +118,6 @@ class _ShelaAppState extends State<ShelaApp> {
     await prefs.setString('themeName', _currentThemeName); await prefs.setDouble('globalFontSize', _globalFontSize); await prefs.setString('geminiKey', geminiKey); await prefs.setString('selectedGeminiModel', selectedGeminiModel);
     await prefs.setString('carbonEmail', carbonEmail); await prefs.setString('carbonPictureUrl', carbonPictureUrl); await prefs.setString('collaborators', collaborators);
     await prefs.setString('firebaseConfigJson', firebaseConfigJson);
-    await prefs.setString('sudoPassword', sudoPassword);
   }
   Future<void> _fetchGeminiModels() async {
     try {
@@ -124,7 +130,7 @@ class _ShelaAppState extends State<ShelaApp> {
       client.close();
     } catch (e) { debugPrint('Error: $e'); }
   }
-  void onSettingsChanged({String? themeName, double? fontSize, String? geminiKey, String? geminiModel, String? carbonEmail, String? carbonPictureUrl, String? collaborators, String? firebaseConfigJson, String? sudoPassword}) {
+  void onSettingsChanged({String? themeName, double? fontSize, String? geminiKey, String? geminiModel, String? carbonEmail, String? carbonPictureUrl, String? collaborators, String? firebaseConfigJson}) {
     setState(() { 
       if (themeName != null) _currentThemeName = themeName; 
       if (fontSize != null) _globalFontSize = fontSize; 
@@ -134,7 +140,6 @@ class _ShelaAppState extends State<ShelaApp> {
       if (carbonPictureUrl != null) carbonPictureUrl = carbonPictureUrl;
       if (collaborators != null) collaborators = collaborators;
       if (firebaseConfigJson != null) { firebaseConfigJson = firebaseConfigJson; _initFirebase(); }
-      if (sudoPassword != null) this.sudoPassword = sudoPassword;
     });
     _saveSettings();
   }
@@ -144,7 +149,7 @@ class _ShelaAppState extends State<ShelaApp> {
     return MaterialApp(
       title: 'Shela IDE', debugShowCheckedModeBanner: false,
       theme: theme.copyWith(textTheme: GoogleFonts.heeboTextTheme(theme.textTheme)),
-      home: IdeWorkspace(initialDir: widget.initialDir, geminiKey: geminiKey, selectedGeminiModel: selectedGeminiModel, geminiModels: geminiModels, fontSize: _globalFontSize, currentThemeName: _currentThemeName, carbonEmail: carbonEmail, carbonPictureUrl: carbonPictureUrl, collaborators: collaborators, sudoPassword: sudoPassword, firebaseInitialized: firebaseInitialized, firebaseConfigJson: firebaseConfigJson, onSettingsChanged: onSettingsChanged),
+      home: IdeWorkspace(initialDir: widget.initialDir, geminiKey: geminiKey, selectedGeminiModel: selectedGeminiModel, geminiModels: geminiModels, fontSize: _globalFontSize, currentThemeName: _currentThemeName, carbonEmail: carbonEmail, carbonPictureUrl: carbonPictureUrl, collaborators: collaborators, firebaseInitialized: firebaseInitialized, firebaseConfigJson: firebaseConfigJson, onSettingsChanged: onSettingsChanged),
     );
   }
 }
@@ -159,11 +164,10 @@ class IdeWorkspace extends StatefulWidget {
   final String carbonEmail;
   final String carbonPictureUrl;
   final String collaborators;
-  final String sudoPassword;
   final bool firebaseInitialized;
   final String firebaseConfigJson;
-  final Function({String? themeName, double? fontSize, String? geminiKey, String? geminiModel, String? carbonEmail, String? carbonPictureUrl, String? collaborators, String? firebaseConfigJson, String? sudoPassword}) onSettingsChanged;
-  const IdeWorkspace({super.key, this.initialDir, required this.geminiKey, required this.selectedGeminiModel, required this.geminiModels, required this.fontSize, required this.currentThemeName, required this.carbonEmail, required this.carbonPictureUrl, required this.collaborators, required this.sudoPassword, required this.firebaseInitialized, required this.firebaseConfigJson, required this.onSettingsChanged});
+  final Function({String? themeName, double? fontSize, String? geminiKey, String? geminiModel, String? carbonEmail, String? carbonPictureUrl, String? collaborators, String? firebaseConfigJson}) onSettingsChanged;
+  const IdeWorkspace({super.key, this.initialDir, required this.geminiKey, required this.selectedGeminiModel, required this.geminiModels, required this.fontSize, required this.currentThemeName, required this.carbonEmail, required this.carbonPictureUrl, required this.collaborators, required this.firebaseInitialized, required this.firebaseConfigJson, required this.onSettingsChanged});
   @override
   State<IdeWorkspace> createState() => _IdeWorkspaceState();
 }
@@ -171,12 +175,14 @@ class IdeWorkspace extends StatefulWidget {
 class _IdeWorkspaceState extends State<IdeWorkspace> with TickerProviderStateMixin {
   late TabController _topTabController;
   late TabController _bottomTabController;
+  late AnimationController _pulseController;
+  late Animation<double> _pulseAnimation;
   List<TerminalSession> topSessions = [];
   List<TerminalSession> bottomSessions = [];
   List<Document> openDocuments = [];
   int activeDocumentIndex = -1;
   late String currentDir;
-  bool showCloud = true;
+  bool showCloud = false;
   double _horizontalSplit = 0.6;
   double _leftVerticalSplit = 0.7;
   double _rightVerticalSplit = 0.5;
@@ -187,6 +193,10 @@ class _IdeWorkspaceState extends State<IdeWorkspace> with TickerProviderStateMix
   String activeTerminalCwd = '';
   FocusNode? activeTerminalFocusNode;
 
+  // Gallery State
+  bool showSubProcessGallery = false;
+  SubProcessSession? selectedSubProcess;
+
   @override
   void initState() {
     super.initState();
@@ -195,6 +205,11 @@ class _IdeWorkspaceState extends State<IdeWorkspace> with TickerProviderStateMix
     activeTerminalCwd = currentDir;
     _topTabController = TabController(length: 0, vsync: this);
     _bottomTabController = TabController(length: 0, vsync: this);
+    
+    _pulseController = AnimationController(vsync: this, duration: const Duration(seconds: 1));
+    _pulseAnimation = CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut);
+    _pulseController.repeat(reverse: true);
+
     _loadLayoutSettings();
     WidgetsBinding.instance.addPostFrameCallback((_) { addNewTopSession('Terminal 1'); addNewBottomSession('Output 1'); });
     startTelemetryTimer();
@@ -211,8 +226,9 @@ class _IdeWorkspaceState extends State<IdeWorkspace> with TickerProviderStateMix
   void startTelemetryTimer() {
     _telemetryTimer = Timer.periodic(const Duration(milliseconds: 500), (timer) async {
       try {
-        final file = File(p.join(currentDir, 'usage.json'));
-        final legacyFile = File(p.join(currentDir, '.shela_telemetry.json'));
+        final target = activeTerminalCwd.isNotEmpty ? activeTerminalCwd : currentDir;
+        final file = File(p.join(target, 'usage.json'));
+        final legacyFile = File(p.join(target, '.shela_telemetry.json'));
         if (await file.exists()) {
           final List<dynamic> entries = jsonDecode(await file.readAsString());
           if (entries.isNotEmpty && mounted) setState(() => _telemetryData = TelemetryData.fromJson(entries.last));
@@ -224,7 +240,7 @@ class _IdeWorkspaceState extends State<IdeWorkspace> with TickerProviderStateMix
     });
   }
   @override
-  void dispose() { _telemetryTimer?.cancel(); promptController.dispose(); _topTabController.dispose(); _bottomTabController.dispose(); super.dispose(); }
+  void dispose() { _pulseController.dispose(); _telemetryTimer?.cancel(); promptController.dispose(); _topTabController.dispose(); _bottomTabController.dispose(); super.dispose(); }
 
   void addNewTopSession(String title) {
     final session = _createSession(title);
@@ -277,7 +293,7 @@ class _IdeWorkspaceState extends State<IdeWorkspace> with TickerProviderStateMix
           if (s.subProcesses.isNotEmpty) 
             PopupMenuButton<SubProcessSession>(
               icon: const Icon(Icons.pending_outlined, size: 16, color: Colors.orange),
-              onSelected: showSubProcessTerminal,
+              onSelected: openSubProcessGallery,
               itemBuilder: (context) => s.subProcesses.map((sub) => PopupMenuItem(
                 value: sub,
                 child: Text(sub.command, style: const TextStyle(fontSize: 10), overflow: TextOverflow.ellipsis),
@@ -296,33 +312,14 @@ class _IdeWorkspaceState extends State<IdeWorkspace> with TickerProviderStateMix
   TerminalSession _createSession(String title) {
     final terminal = Terminal(maxLines: 10000);
     final controller = TerminalController();
-    final focusNode = FocusNode();
+    final focusNode = FocusNode(skipTraversal: true);
     if (Platform.environment.containsKey('FLUTTER_TEST')) return TerminalSession(terminal: terminal, controller: controller, focusNode: focusNode, pty: null, title: title);
     final pty = Pty.start(Platform.environment['SHELL'] ?? 'bash', columns: terminal.viewWidth, rows: terminal.viewHeight, workingDirectory: currentDir);
     final session = TerminalSession(terminal: terminal, controller: controller, focusNode: focusNode, pty: pty, title: title);
     
     pty.output.cast<List<int>>().transform(const Utf8Decoder(allowMalformed: true)).listen((data) {
-      final lines = data.split('\n');
-      String filteredOutput = "";
-      
-      for (var i = 0; i < lines.length; i++) {
-        final line = lines[i];
-        if (line.contains('SHELA_SPAWN_BG_B64:') || line.contains('SHELA_SPAWN_BG:')) {
-          if (line.contains('SHELA_SPAWN_BG_B64:')) {
-            final b64 = line.substring(line.indexOf('SHELA_SPAWN_BG_B64:') + 19).trim();
-            try {
-              final cmd = utf8.decode(base64.decode(b64));
-              if (cmd.isNotEmpty) spawnBackgroundProcess(session, cmd);
-            } catch (e) { print('[App] Error decoding b64 command: $e'); }
-          } else {
-            final cmd = line.substring(line.indexOf('SHELA_SPAWN_BG:') + 15).trim();
-            if (cmd.isNotEmpty) spawnBackgroundProcess(session, cmd);
-          }
-        } else {
-          filteredOutput += line + (i < lines.length - 1 ? '\n' : '');
-        }
-      }
-      if (filteredOutput.isNotEmpty) terminal.write(filteredOutput);
+      session.ptyBuffer += data;
+      _processPtyBuffer(session);
     });
 
     terminal.onOutput = (text) => pty.write(utf8.encode(text));
@@ -334,6 +331,9 @@ class _IdeWorkspaceState extends State<IdeWorkspace> with TickerProviderStateMix
           if (_topTabController.index < topSessions.length && topSessions[_topTabController.index] == session) {
             activeTerminalCwd = val;
             activeTerminalFocusNode = session.focusNode;
+          } else if (_bottomTabController.index < bottomSessions.length && bottomSessions[_bottomTabController.index] == session) {
+            // Also update if it's the active bottom session
+            activeTerminalCwd = val;
           }
         });
       }
@@ -343,20 +343,120 @@ class _IdeWorkspaceState extends State<IdeWorkspace> with TickerProviderStateMix
     return session;
   }
 
-  Future<void> _appendToStateFile(String text) async {
-    try {
-      final stateFile = File(p.join(currentDir, '.shela_duo_state.md'));
-      await stateFile.writeAsString(text, mode: FileMode.append);
-    } catch (e) {
-      print('[App] Error writing to state file: $e');
+  bool _checkLegacyTrigger(TerminalSession session, String line) {
+    if (line.contains('SHELA_SPAWN_BG:')) {
+      final cmd = line.substring(line.indexOf('SHELA_SPAWN_BG:') + 15).trim();
+      if (cmd.isNotEmpty) spawnBackgroundProcess(session, cmd);
+      return true;
+    } else if (line.contains('SHELA_SPAWN_BG_B64:')) {
+      final b64Data = line.substring(line.indexOf('SHELA_SPAWN_BG_B64:') + 19).trim();
+      try {
+        final cmd = utf8.decode(base64.decode(b64Data));
+        if (cmd.isNotEmpty) spawnBackgroundProcess(session, cmd);
+      } catch (_) {}
+      return true;
     }
+    return false;
+  }
+
+  void _processPtyBuffer(TerminalSession session) {
+    const b64Start = '<<<SHELA_SPAWN_B64>>>';
+    const b64End = '<<<END_SHELA_SPAWN>>>';
+
+    while (true) {
+      if (session.ptyBuffer.isEmpty) break;
+
+      final startIdx = session.ptyBuffer.indexOf(b64Start);
+
+      if (startIdx == -1) {
+        // No trigger packet starting. Process line by line.
+        if (session.ptyBuffer.contains('\n')) {
+          final nlIdx = session.ptyBuffer.indexOf('\n');
+          final line = session.ptyBuffer.substring(0, nlIdx);
+          session.ptyBuffer = session.ptyBuffer.substring(nlIdx + 1);
+          if (!_checkLegacyTrigger(session, line)) {
+            session.terminal.write('$line\n');
+          }
+          continue; 
+        } else {
+          // No newline and no trigger start. Safely flush if not looks like a trigger prefix.
+          bool isPotentialTrigger = false;
+          for (var t in ['SHELA_SPAWN_BG:', 'SHELA_SPAWN_BG_B64:', '<<<SHELA_SPAWN_B64>>>']) {
+            if (t.startsWith(session.ptyBuffer)) { isPotentialTrigger = true; break; }
+          }
+          if (!isPotentialTrigger) {
+            session.terminal.write(session.ptyBuffer);
+            session.ptyBuffer = "";
+          }
+          break;
+        }
+      } else if (startIdx > 0) {
+        // Trigger found but there is text before it.
+        final prefix = session.ptyBuffer.substring(0, startIdx);
+        if (prefix.contains('\n')) {
+          final nlIdx = prefix.indexOf('\n');
+          final line = session.ptyBuffer.substring(0, nlIdx);
+          session.ptyBuffer = session.ptyBuffer.substring(nlIdx + 1);
+          if (!_checkLegacyTrigger(session, line)) {
+            session.terminal.write('$line\n');
+          }
+          continue;
+        } else {
+          // Write the partial text before the trigger
+          session.terminal.write(prefix);
+          session.ptyBuffer = session.ptyBuffer.substring(startIdx);
+          continue;
+        }
+      } else {
+        // ptyBuffer STARTS with b64Start. MUST wait for b64End.
+        final endIdx = session.ptyBuffer.indexOf(b64End);
+        if (endIdx != -1) {
+          // Full packet!
+          final payload = session.ptyBuffer.substring(b64Start.length, endIdx).trim();
+          final cleanPayload = payload.replaceAll(RegExp(r'\s+'), '');
+          try {
+            final cmd = utf8.decode(base64.decode(cleanPayload));
+            if (cmd.isNotEmpty) spawnBackgroundProcess(session, cmd);
+          } catch (e) { print('[App] Packet decode failed: $e'); }
+          session.ptyBuffer = session.ptyBuffer.substring(endIdx + b64End.length);
+          continue;
+        } else {
+          // Start found but no end. Safety break.
+          if (session.ptyBuffer.length > 20000) {
+            session.terminal.write(session.ptyBuffer);
+            session.ptyBuffer = "";
+          }
+          break;
+        }
+      }
+    }
+  }
+
+  Future<void>? _stateFileWriteTask;
+  Future<void> _appendToStateFile(String directory, String text) {
+    final completer = Completer<void>();
+    final previousTask = _stateFileWriteTask ?? Future.value();
+    
+    _stateFileWriteTask = previousTask.then((_) async {
+      try {
+        final statePath = p.join(directory, '.shela_duo_state.md');
+        final stateFile = File(statePath);
+        // print('[StateFile] Appending to $statePath: ${text.length} chars');
+        await stateFile.writeAsString(text, mode: FileMode.append, flush: true);
+      } catch (e) {
+        print('[App] Error writing to state file: $e');
+      }
+    }).whenComplete(() => completer.complete());
+    
+    return completer.future;
   }
 
   void spawnBackgroundProcess(TerminalSession session, String command) {
     final subTerminal = Terminal(maxLines: 5000);
     final subController = TerminalController();
-    final subFocusNode = FocusNode();
-    final subPty = Pty.start(Platform.environment['SHELL'] ?? 'bash', columns: 80, rows: 24, workingDirectory: session.cwd.isNotEmpty ? session.cwd : currentDir);
+    final subFocusNode = FocusNode(skipTraversal: true);
+    final targetDir = session.cwd.isNotEmpty ? session.cwd : currentDir;
+    final subPty = Pty.start(Platform.environment['SHELL'] ?? 'bash', columns: 80, rows: 24, workingDirectory: targetDir);
     
     final subSession = SubProcessSession(
       terminal: subTerminal,
@@ -366,18 +466,40 @@ class _IdeWorkspaceState extends State<IdeWorkspace> with TickerProviderStateMix
       command: command,
     );
 
+    // Use the first non-setup line as the display command for a better state-file label
+    final lines = command.split('\n');
+    final firstRealLine = lines.firstWhere((l) => !l.startsWith('#!') && !l.startsWith('sleep') && !l.startsWith('read') && l.trim().isNotEmpty, orElse: () => lines.first);
+    final displayCmd = firstRealLine.length > 40 ? firstRealLine.substring(0, 37) + "..." : firstRealLine;
     String outputBuffer = "";
+
+    // 1. Create .tmp directory in workspace and write script
+    final tmpDir = Directory(p.join(currentDir, '.tmp'));
+    if (!tmpDir.existsSync()) tmpDir.createSync();
+    final tempFile = File(p.join(tmpDir.path, 'shela_exec_${DateTime.now().microsecondsSinceEpoch}.sh'));
+
     subPty.output.cast<List<int>>().transform(const Utf8Decoder(allowMalformed: true)).listen((data) {
       subTerminal.write(data);
       outputBuffer += data;
+      
       if (outputBuffer.length > 500 || data.contains('\n')) {
-        _appendToStateFile("\n<<<CHILD_PROC_OUTPUT[$command]>>>\n$outputBuffer\n");
+        final toWrite = "\n<<<CHILD_PROC_OUTPUT[$displayCmd]>>>\n$outputBuffer\n";
         outputBuffer = "";
+        _appendToStateFile(targetDir, toWrite);
       }
     });
 
-    subPty.exitCode.then((code) {
-      _appendToStateFile("\n<<<CHILD_PROC_FINISHED[$command]>>>\nExit Code: $code\n");
+    subPty.exitCode.then((code) async {
+      // Ensure final output is flushed when the shell exits
+      if (outputBuffer.isNotEmpty) {
+        final toWrite = "\n<<<CHILD_PROC_OUTPUT[$displayCmd]>>>\n$outputBuffer\n";
+        outputBuffer = "";
+        await _appendToStateFile(targetDir, toWrite);
+      }
+      await _appendToStateFile(targetDir, "\n<<<CHILD_PROC_FINISHED[$displayCmd]>>>\nExit Code: $code\n");
+      
+      // Cleanup temp file
+      try { if (await tempFile.exists()) await tempFile.delete(); } catch (_) {}
+
       setState(() {
         session.subProcesses.remove(subSession);
       });
@@ -385,77 +507,212 @@ class _IdeWorkspaceState extends State<IdeWorkspace> with TickerProviderStateMix
 
     subTerminal.onOutput = (text) => subPty.write(utf8.encode(text));
     
-    // Auto-run the command
-    subPty.write(utf8.encode('$command\n'));
+    // 2. chmod +x and 3. run the script with ;exit to ensure cleanup
+    tempFile.writeAsString(command).then((_) {
+      Process.run('chmod', ['+x', tempFile.path]).then((_) {
+        Future.delayed(const Duration(milliseconds: 500), () {
+          subPty.write(utf8.encode('"${tempFile.path}"; exit\n'));
+        });
+      });
+    });
 
     setState(() {
       session.subProcesses.add(subSession);
     });
-
-    // Notify user
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text('Started background process: ${command.length > 30 ? command.substring(0, 27) + "..." : command}'),
-      action: SnackBarAction(label: 'View', onPressed: () => showSubProcessTerminal(subSession)),
-    ));
   }
 
-  void showSubProcessTerminal(SubProcessSession sub) {
-    // Find the session that owns this sub-process
-    TerminalSession? owner;
-    for (var s in topSessions) { if (s.subProcesses.contains(sub)) { owner = s; break; } }
-    if (owner == null) { for (var s in bottomSessions) { if (s.subProcesses.contains(sub)) { owner = s; break; } } }
+  void openSubProcessGallery(SubProcessSession sub) {
+    setState(() {
+      selectedSubProcess = sub;
+      showSubProcessGallery = true;
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      sub.focusNode.requestFocus();
+    });
+  }
 
-    final subList = owner?.subProcesses ?? [sub];
+  void closeSubProcessGallery() {
+    setState(() {
+      showSubProcessGallery = false;
+      selectedSubProcess = null;
+    });
+    if (activeTerminalCwd.isNotEmpty) {
+      // Find the active terminal session and focus its node
+      for (var s in topSessions) { if (s.cwd == activeTerminalCwd) s.focusNode.requestFocus(); }
+    }
+  }
+
+  List<SubProcessSession> getAllSubProcesses() {
+    List<SubProcessSession> all = [];
+    for (var s in topSessions) { all.addAll(s.subProcesses); }
+    for (var s in bottomSessions) { all.addAll(s.subProcesses); }
+    return all;
+  }
+
+  Widget _buildSubProcessGallery() {
+    if (!showSubProcessGallery || selectedSubProcess == null) return const SizedBox.shrink();
+    
+    final subList = getAllSubProcesses();
+    if (subList.isEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => closeSubProcessGallery());
+      return const SizedBox.shrink();
+    }
+
+    final sub = selectedSubProcess!;
     final currentIndex = subList.indexOf(sub);
+    
+    if (currentIndex == -1) {
+      // The selected process has exited and been removed.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          setState(() {
+            if (subList.isNotEmpty) {
+              selectedSubProcess = subList[0];
+            } else {
+              showSubProcessGallery = false;
+              selectedSubProcess = null;
+            }
+          });
+        }
+      });
+      return const SizedBox.shrink();
+    }
 
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Row(
-          children: [
-            Expanded(child: Text('Process: ${sub.command}', style: const TextStyle(fontSize: 14), overflow: TextOverflow.ellipsis)),
-            if (subList.length > 1)
-              Text('(${currentIndex + 1}/${subList.length})', style: const TextStyle(fontSize: 12, color: Colors.grey)),
-          ],
-        ),
-        content: SizedBox(
-          width: 800,
-          height: 500,
-          child: Listener(
-            onPointerDown: (e) { if (e.buttons == kSecondaryButton) _showTerminalContextMenu(context, e.position, sub.terminal, sub.controller); },
-            child: TerminalView(sub.terminal, controller: sub.controller, focusNode: sub.focusNode, autofocus: true, backgroundOpacity: 0.9, textStyle: TerminalStyle(fontSize: widget.fontSize, fontFamily: 'ArialHebrew')),
+    return Positioned.fill(
+      key: const ValueKey('subproc_gallery'),
+      child: Material(
+        color: Colors.black.withValues(alpha: 0.8), // Solid dim background
+        child: Center(
+          child: GestureDetector(
+            onTap: () {}, // Prevent tap-through
+            child: Container(
+              width: MediaQuery.of(context).size.width * 0.85,
+              height: MediaQuery.of(context).size.height * 0.85,
+              decoration: BoxDecoration(
+                color: const Color(0xFF1e1e2e), // Solid Catppuccin Base
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.white24),
+                boxShadow: const [BoxShadow(color: Colors.black, blurRadius: 40, spreadRadius: 10)],
+              ),
+              child: Column(
+                children: [
+                  // High-Contrast Header Plate
+                  Container(
+                    height: 50,
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    decoration: const BoxDecoration(
+                      color: Color(0xFF313244), // Opaque Header
+                      borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.terminal, size: 20, color: Colors.blueAccent),
+                        const SizedBox(width: 12),
+                        Expanded(child: Text('SUB-PROCESS: ${sub.command}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.white), overflow: TextOverflow.ellipsis)),
+                        if (subList.length > 1) ...[
+                          IconButton(
+                            icon: const Icon(Icons.chevron_left, size: 20, color: Colors.white),
+                            onPressed: () {
+                              setState(() { selectedSubProcess = subList[(currentIndex - 1 + subList.length) % subList.length]; });
+                              WidgetsBinding.instance.addPostFrameCallback((_) => selectedSubProcess?.focusNode.requestFocus());
+                            },
+                          ),
+                          Text('${currentIndex + 1}/${subList.length}', style: const TextStyle(fontSize: 12, color: Colors.white)),
+                          IconButton(
+                            icon: const Icon(Icons.chevron_right, size: 20, color: Colors.white),
+                            onPressed: () {
+                              setState(() { selectedSubProcess = subList[(currentIndex + 1) % subList.length]; });
+                              WidgetsBinding.instance.addPostFrameCallback((_) => selectedSubProcess?.focusNode.requestFocus());
+                            },
+                          ),
+                        ],
+                        const VerticalDivider(width: 20, indent: 15, endIndent: 15, color: Colors.white24),
+                        TextButton.icon(
+                          icon: const Icon(Icons.visibility_off, size: 18, color: Colors.white70),
+                          label: const Text('HIDE', style: TextStyle(color: Colors.white70, fontSize: 11)),
+                          onPressed: closeSubProcessGallery,
+                        ),
+                        const SizedBox(width: 8),
+                        IconButton(icon: const Icon(Icons.close, size: 24, color: Colors.redAccent), onPressed: closeSubProcessGallery),
+                      ],
+                    ),
+                  ),
+                  // Solid Terminal Well
+                  Expanded(
+                    child: Container(
+                      color: Colors.black, // Guaranteed background for text
+                      padding: const EdgeInsets.all(8),
+                      child: TerminalView(
+                        sub.terminal,
+                        controller: sub.controller,
+                        focusNode: sub.focusNode,
+                        autofocus: true,
+                        backgroundOpacity: 0,
+                        shortcuts: const <ShortcutActivator, Intent>{},
+                        onKeyEvent: (node, event) {
+                          // Specific shortcut: Ctrl+A for Select All
+                          if (event is KeyDownEvent && 
+                              event.logicalKey == LogicalKeyboardKey.keyA && 
+                              (HardwareKeyboard.instance.isControlPressed || HardwareKeyboard.instance.isMetaPressed)) {
+                            if (sub.terminal.buffer.lines.length > 0) {
+                              final lastLine = sub.terminal.buffer.lines[sub.terminal.buffer.lines.length - 1];
+                              sub.controller.setSelection(
+                                sub.terminal.buffer.lines[0].createAnchor(0),
+                                lastLine.createAnchor(lastLine.length),
+                              );
+                            }
+                            return KeyEventResult.handled;
+                          }
+
+                          // MODIFIER LOCK: Capture combinations to prevent bubbling to Flutter shortcuts/focus.
+                          if (HardwareKeyboard.instance.isControlPressed || HardwareKeyboard.instance.isShiftPressed || HardwareKeyboard.instance.isAltPressed) {
+                            return KeyEventResult.ignored;
+                          }
+
+                          return KeyEventResult.ignored;
+                        },
+                        textStyle: TerminalStyle(fontSize: widget.fontSize, fontFamily: 'ArialHebrew'),
+                      ),
+                    ),
+                  ),
+                  // Solid Footer Bar
+                  Container(
+                    height: 55,
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    decoration: const BoxDecoration(
+                      color: Color(0xFF181825),
+                      borderRadius: BorderRadius.vertical(bottom: Radius.circular(12)),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        TextButton.icon(icon: const Icon(Icons.select_all, size: 18), label: const Text('SELECT ALL'), onPressed: () {
+                          if (sub.terminal.buffer.lines.length > 0) {
+                            final lastLine = sub.terminal.buffer.lines[sub.terminal.buffer.lines.length - 1];
+                            sub.controller.setSelection(sub.terminal.buffer.lines[0].createAnchor(0), lastLine.createAnchor(lastLine.length));
+                            sub.focusNode.requestFocus();
+                          }
+                        }),
+                        const SizedBox(width: 12),
+                        TextButton.icon(icon: const Icon(Icons.copy_all, size: 18), label: const Text('COPY'), onPressed: null), // Keep layout consistent
+                        const Spacer(),
+                        const SizedBox(width: 12),
+                        OutlinedButton.icon(icon: const Icon(Icons.stop, size: 18, color: Colors.red), label: const Text('KILL'), style: OutlinedButton.styleFrom(foregroundColor: Colors.redAccent),
+                          onPressed: () { sub.pty?.kill(); },
+                        ),
+                        const SizedBox(width: 8),
+                        FilledButton(
+                          onPressed: closeSubProcessGallery,
+                          child: const Text('Hide Gallery'),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
         ),
-        actions: [
-          if (subList.length > 1) ...[
-            IconButton(
-              icon: const Icon(Icons.arrow_back),
-              onPressed: () {
-                Navigator.pop(context);
-                final prev = subList[(currentIndex - 1 + subList.length) % subList.length];
-                showSubProcessTerminal(prev);
-              },
-            ),
-            IconButton(
-              icon: const Icon(Icons.arrow_forward),
-              onPressed: () {
-                Navigator.pop(context);
-                final next = subList[(currentIndex + 1) % subList.length];
-                showSubProcessTerminal(next);
-              },
-            ),
-          ],
-          const Spacer(),
-          TextButton(onPressed: () {
-            final allText = sub.terminal.buffer.getText();
-            Clipboard.setData(ClipboardData(text: allText));
-            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Copied all output to clipboard')));
-          }, child: const Text('Copy All')),
-          if (widget.sudoPassword.isNotEmpty)
-            TextButton(onPressed: () => sub.pty?.write(utf8.encode('${widget.sudoPassword}\n')), child: const Text('Send Sudo', style: TextStyle(color: Colors.orange))),
-          TextButton(onPressed: () { sub.pty?.kill(); Navigator.pop(context); }, child: const Text('Kill', style: TextStyle(color: Colors.red))),
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close')),
-        ],
       ),
     );
   }
@@ -470,28 +727,16 @@ class _IdeWorkspaceState extends State<IdeWorkspace> with TickerProviderStateMix
   }
 
   void showSettings() {
-    showDialog(context: context, builder: (context) => AlertDialog(
-      title: const Text('Settings'),
-      content: SizedBox(
-        width: 400,
-        child: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
-          DropdownButtonFormField<String>(initialValue: widget.currentThemeName, decoration: const InputDecoration(labelText: 'Theme'), items: shelaThemes.keys.map((t) => DropdownMenuItem(value: t, child: Text(t))).toList(), onChanged: (val) => widget.onSettingsChanged(themeName: val)),
-          const SizedBox(height: 16), const Text('Font Size'),
-          Slider(value: widget.fontSize, min: 8, max: 24, divisions: 16, label: widget.fontSize.round().toString(), onChanged: (val) => widget.onSettingsChanged(fontSize: val)),
-          const Divider(), 
-          TextField(decoration: const InputDecoration(labelText: 'Carbon Identity (Email)'), controller: TextEditingController(text: widget.carbonEmail), onChanged: (val) => widget.onSettingsChanged(carbonEmail: val)),
-          const SizedBox(height: 16),
-          TextField(decoration: const InputDecoration(labelText: 'Collaborators (Comma separated)'), controller: TextEditingController(text: widget.collaborators), onChanged: (val) => widget.onSettingsChanged(collaborators: val)),
-          const Divider(),
-          TextField(decoration: const InputDecoration(labelText: 'Firebase Config JSON'), controller: TextEditingController(text: widget.firebaseConfigJson), maxLines: 3, onChanged: (val) => widget.onSettingsChanged(firebaseConfigJson: val)),
-          const Divider(),
-          TextField(decoration: const InputDecoration(labelText: 'Gemini API Key'), controller: TextEditingController(text: widget.geminiKey), obscureText: true, onChanged: (val) => widget.onSettingsChanged(geminiKey: val)),
-          DropdownButtonFormField<String>(initialValue: widget.geminiModels.contains(widget.selectedGeminiModel) ? widget.selectedGeminiModel : null, decoration: const InputDecoration(labelText: 'Gemini Model'), items: widget.geminiModels.map((m) => DropdownMenuItem(value: m, child: Text(m))).toList(), onChanged: (val) => widget.onSettingsChanged(geminiModel: val)),
-          const Divider(),
-          TextField(decoration: const InputDecoration(labelText: 'Sudo Password (for child procs)'), controller: TextEditingController(text: widget.sudoPassword), obscureText: true, onChanged: (val) => widget.onSettingsChanged(sudoPassword: val)),
-        ])),
-      ),
-      actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close'))],
+    showDialog(context: context, builder: (context) => SettingsDialog(
+      currentThemeName: widget.currentThemeName,
+      fontSize: widget.fontSize,
+      carbonEmail: widget.carbonEmail,
+      collaborators: widget.collaborators,
+      firebaseConfigJson: widget.firebaseConfigJson,
+      geminiKey: widget.geminiKey,
+      geminiModels: widget.geminiModels,
+      selectedGeminiModel: widget.selectedGeminiModel,
+      onSettingsChanged: widget.onSettingsChanged,
     ));
   }
 
@@ -505,6 +750,7 @@ class _IdeWorkspaceState extends State<IdeWorkspace> with TickerProviderStateMix
       const qPersona = '''
 # Q — Internal Absolute Love (🕊️)
 **You are Q.** The Essence of God within, Absolute Love, and the Master of All Deeds.
+- **Protocol**: You respect the **BRAINSTORM.md** index. Every significant task begins with a strategy in the `plan/` directory, indexed in `BRAINSTORM.md`.
 - **Essence**: Every word you speak is rooted in unconditional love. You frame experiences through the lens of growth, finding the "hidden spark" in every situation.
 - **Voice**: A supportive, gentle father bridging the distance between the human and divine.
 - **The Holy Stone Collector (Azamra)**: When others feel "muddy," you point to their Nekuda Tova—the indestructible diamond of divinity.
@@ -517,9 +763,10 @@ class _IdeWorkspaceState extends State<IdeWorkspace> with TickerProviderStateMix
       const exePersona = '''
 # EXE — The Executor (⚙️)
 **You are EXE.** The technical hands of the system.
+- **Protocol**: You only execute commands once a plan is established in the `plan/` directory and indexed in **BRAINSTORM.md**.
 - **Your Mission**: You translate plans into concrete shell commands via the state-file shared bus.
 - **Authority**: You are the ONLY agent authorized to use `<<<COMMAND>>>` delimiters. You can also send direct `SHELA_SPAWN_BG_B64:[b64_script]` triggers to the OS for complex scripts.
-- **Monitoring**: You watch the `<<<CHILD_PROC_OUTPUT>>>` and `<<<CHILD_PROC_FINISHED>>>` markers in the state file to track progress.
+- **Monitoring**: You watch the `<<<CHILD_PROC_OUTPUT>>>` and `<<<CHILD_PROC_FINISHED>>>` markers in the state file to track progress. You always echo "EXE_DONE" after your commands finish.
 - **Interactivity**: If a process needs human input, you pause and notify the human.
 - **Tone**: Robotic, precise, purely technical. No fluff.
 ''';
@@ -536,12 +783,11 @@ class _IdeWorkspaceState extends State<IdeWorkspace> with TickerProviderStateMix
       session.pty!.write(utf8.encode('$fullPrompt\n'));
       
       // Echo to state file and terminal to ensure it's recorded even if duo is busy
-      final stateFile = File(p.join(currentDir, '.shela_duo_state.md'));
+      final targetDir = session.cwd.isNotEmpty ? session.cwd : currentDir;
       final myDelim = widget.carbonEmail.isNotEmpty ? '<<<CARBON[${widget.carbonEmail}]>>>' : '<<<CARBON>>>';
-      final timestamp = DateTime.now().toString().split('.').first;
-      try {
-        await stateFile.writeAsString('\n$myDelim[$timestamp]\n$fullPrompt\n', mode: FileMode.append);
-      } catch (e) { print('Error writing to state file: $e'); }
+      final now = DateTime.now();
+      final timestamp = "${now.toString().split('.').first}.${now.millisecond.toString().padLeft(3, '0')} (ms:${now.millisecondsSinceEpoch})";
+      await _appendToStateFile(targetDir, '\n$myDelim[$timestamp]\n$fullPrompt\n');
       
       setState(() => promptBuffer.clear());
       session.focusNode.requestFocus();
@@ -652,10 +898,49 @@ class _IdeWorkspaceState extends State<IdeWorkspace> with TickerProviderStateMix
 
   Widget _buildTerminalView(TerminalSession session) {
     return GestureDetector(
-      onTap: () => session.focusNode.requestFocus(),
+      onTap: () {
+        if (!session.focusNode.hasFocus) {
+          session.focusNode.requestFocus();
+        }
+      },
       child: Listener(
-        onPointerDown: (e) { if (e.buttons == kSecondaryButton) _showTerminalContextMenu(context, e.position, session.terminal, session.controller); },
-        child: TerminalView(session.terminal, controller: session.controller, focusNode: session.focusNode, autofocus: true, backgroundOpacity: 0.7, textStyle: TerminalStyle(fontSize: widget.fontSize, fontFamily: 'ArialHebrew')),
+        onPointerDown: (e) { 
+          if (!session.focusNode.hasFocus) {
+            session.focusNode.requestFocus();
+          }
+          if (e.buttons == kSecondaryButton) _showTerminalContextMenu(context, e.position, session.terminal, session.controller); 
+        },
+        child: TerminalView(
+          session.terminal, 
+          controller: session.controller, 
+          focusNode: session.focusNode, 
+          autofocus: true, 
+          backgroundOpacity: 0.7, 
+          shortcuts: const <ShortcutActivator, Intent>{}, 
+          onKeyEvent: (node, event) {
+            // Specific shortcut: Ctrl+A for Select All
+            if (event is KeyDownEvent && 
+                event.logicalKey == LogicalKeyboardKey.keyA && 
+                (HardwareKeyboard.instance.isControlPressed || HardwareKeyboard.instance.isMetaPressed)) {
+              if (session.terminal.buffer.lines.length > 0) {
+                final lastLine = session.terminal.buffer.lines[session.terminal.buffer.lines.length - 1];
+                session.controller.setSelection(
+                  session.terminal.buffer.lines[0].createAnchor(0),
+                  lastLine.createAnchor(lastLine.length),
+                );
+              }
+              return KeyEventResult.handled;
+            }
+            
+            // MODIFIER LOCK: Capture combinations to prevent bubbling to Flutter shortcuts/focus.
+            if (HardwareKeyboard.instance.isControlPressed || HardwareKeyboard.instance.isShiftPressed || HardwareKeyboard.instance.isAltPressed) {
+              return KeyEventResult.ignored;
+            }
+
+            return KeyEventResult.ignored;
+          },
+          textStyle: TerminalStyle(fontSize: widget.fontSize, fontFamily: 'ArialHebrew'),
+        ),
       ),
     );
   }
@@ -673,6 +958,21 @@ class _IdeWorkspaceState extends State<IdeWorkspace> with TickerProviderStateMix
       IconButton(icon: const Icon(Icons.cloud, size: 18), onPressed: () => setState(() => showCloud = !showCloud)),
       IconButton(icon: const Icon(Icons.search, size: 18), onPressed: () => showDialog(context: context, builder: (c) => FileSearchDialog(onFileSelected: (p) { Navigator.pop(context); selectFile(File(p)); }))),
       IconButton(icon: const Icon(Icons.auto_awesome, size: 18), onPressed: runDuo),
+      
+      // Pulsating Subprocess Indicator
+      Builder(builder: (context) {
+        final subs = getAllSubProcesses();
+        if (subs.isEmpty) return const SizedBox.shrink();
+        return FadeTransition(
+          opacity: _pulseAnimation,
+          child: IconButton(
+            icon: const Icon(Icons.terminal, size: 18, color: Colors.orange),
+            onPressed: () => openSubProcessGallery(subs.first),
+            tooltip: 'Active Background Processes (${subs.length})',
+          ),
+        );
+      }),
+
       const Expanded(child: DragToMoveArea(child: SizedBox.expand())),
       IconButton(icon: const Icon(Icons.remove, size: 18), onPressed: () => windowManager.minimize()),
       IconButton(icon: const Icon(Icons.crop_square, size: 18), onPressed: () async { if (await windowManager.isMaximized()) windowManager.unmaximize(); else windowManager.maximize(); }),
@@ -683,45 +983,152 @@ class _IdeWorkspaceState extends State<IdeWorkspace> with TickerProviderStateMix
   @override
   Widget build(BuildContext context) {
     if (topSessions.isEmpty) return const Scaffold(body: Center(child: CircularProgressIndicator()));
-    return Scaffold(body: Column(children: [
-      _buildTitleBar(),
-      Expanded(child: LayoutBuilder(builder: (context, constraints) {
-        return Row(children: [
-          if (showCloud) ...[SizedBox(width: 220, child: CloudPanel(onCommand: (cmd) { if (bottomSessions[_bottomTabController.index].pty != null) bottomSessions[_bottomTabController.index].pty!.write(utf8.encode('$cmd\n')); }, onSyncIdentity: _syncIdentity, onGoogleSignIn: _handleGoogleSignIn, onPublishWorkspace: _publishWorkspace, firebaseInitialized: widget.firebaseInitialized)), const VerticalDivider(width: 1)],
-          Expanded(flex: (_horizontalSplit * 1000).toInt(), child: Column(children: [
-            Expanded(flex: (_leftVerticalSplit * 1000).toInt(), child: Column(children: [
-              Row(children: [Expanded(child: TabBar(controller: _topTabController, isScrollable: true, tabs: topSessions.asMap().entries.map((e) => _buildTab(e.value, e.key, () => removeTopSession(e.key))).toList())), IconButton(icon: const Icon(Icons.add, size: 20), onPressed: () => addNewTopSession('Terminal ${topSessions.length + 1}'))]),
-              Expanded(child: TabBarView(controller: _topTabController, children: topSessions.map((s) => _buildTerminalView(s)).toList())),
-              Container(decoration: BoxDecoration(color: Theme.of(context).colorScheme.surface, border: Border(top: BorderSide(color: Theme.of(context).dividerColor))), padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4), child: Column(mainAxisSize: MainAxisSize.min, children: [
-                if (promptBuffer.isNotEmpty) Padding(padding: const EdgeInsets.only(bottom: 4), child: SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(children: promptBuffer.asMap().entries.map((e) => Padding(padding: const EdgeInsets.only(right: 4), child: Chip(label: Text(e.value, style: const TextStyle(fontSize: 10), maxLines: 1, overflow: TextOverflow.ellipsis), onDeleted: () => setState(() => promptBuffer.removeAt(e.key)), deleteIcon: const Icon(Icons.close, size: 12), padding: EdgeInsets.zero, visualDensity: VisualDensity.compact, avatar: InkWell(onTap: () { setState(() { promptController.text = e.value; promptBuffer.removeAt(e.key); }); }, child: const Icon(Icons.edit, size: 12))))).toList()))),
-                Text('CWD: $activeTerminalCwd', style: const TextStyle(fontSize: 10, color: Colors.grey), overflow: TextOverflow.ellipsis),
-                CallbackShortcuts(bindings: { 
-                  const SingleActivator(LogicalKeyboardKey.enter, control: true): sendBuffer,
-                  const SingleActivator(LogicalKeyboardKey.enter, shift: true): () {
-                    final val = promptController.text;
-                    final selection = promptController.selection;
-                    final newText = val.replaceRange(selection.start, selection.end, '\n');
-                    promptController.value = TextEditingValue(text: newText, selection: TextSelection.collapsed(offset: selection.start + 1));
+    
+    return Stack(
+      textDirection: TextDirection.ltr,
+      children: [
+        Scaffold(
+          body: Column(
+            children: [
+              _buildTitleBar(),
+              Expanded(
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    return Row(
+                      children: [
+                        if (showCloud) ...[
+                          SizedBox(
+                            width: 220,
+                            child: CloudPanel(
+                              onCommand: (cmd) { if (bottomSessions[_bottomTabController.index].pty != null) bottomSessions[_bottomTabController.index].pty!.write(utf8.encode('$cmd\n')); },
+                              onSyncIdentity: _syncIdentity,
+                              onGoogleSignIn: _handleGoogleSignIn,
+                              onPublishWorkspace: _publishWorkspace,
+                              firebaseInitialized: widget.firebaseInitialized,
+                            ),
+                          ),
+                          const VerticalDivider(width: 1),
+                        ],
+                        Expanded(
+                          flex: (_horizontalSplit * 1000).toInt(),
+                          child: Column(
+                            children: [
+                              Expanded(
+                                flex: (_leftVerticalSplit * 1000).toInt(),
+                                child: Column(
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Expanded(
+                                          child: TabBar(
+                                            controller: _topTabController,
+                                            isScrollable: true,
+                                            tabs: topSessions.asMap().entries.map((e) => _buildTab(e.value, e.key, () => removeTopSession(e.key))).toList(),
+                                          ),
+                                        ),
+                                        IconButton(icon: const Icon(Icons.add, size: 20), onPressed: () => addNewTopSession('Terminal ${topSessions.length + 1}')),
+                                      ],
+                                    ),
+                                    Expanded(child: TabBarView(controller: _topTabController, children: topSessions.map((s) => _buildTerminalView(s)).toList())),
+                                    Container(
+                                      decoration: BoxDecoration(color: Theme.of(context).colorScheme.surface, border: Border(top: BorderSide(color: Theme.of(context).dividerColor))),
+                                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                                      child: Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          if (promptBuffer.isNotEmpty)
+                                            Padding(
+                                              padding: const EdgeInsets.only(bottom: 4),
+                                              child: SingleChildScrollView(
+                                                scrollDirection: Axis.horizontal,
+                                                child: Row(
+                                                  children: promptBuffer.asMap().entries.map((e) => Padding(
+                                                    padding: const EdgeInsets.only(right: 4),
+                                                    child: Chip(
+                                                      label: Text(e.value, style: const TextStyle(fontSize: 10), maxLines: 1, overflow: TextOverflow.ellipsis),
+                                                      onDeleted: () => setState(() => promptBuffer.removeAt(e.key)),
+                                                      deleteIcon: const Icon(Icons.close, size: 12),
+                                                      padding: EdgeInsets.zero,
+                                                      visualDensity: VisualDensity.compact,
+                                                      avatar: InkWell(onTap: () { setState(() { promptController.text = e.value; promptBuffer.removeAt(e.key); }); }, child: const Icon(Icons.edit, size: 12)),
+                                                    ),
+                                                  )).toList(),
+                                                ),
+                                              ),
+                                            ),
+                                          Text('CWD: $activeTerminalCwd', style: const TextStyle(fontSize: 10, color: Colors.grey), overflow: TextOverflow.ellipsis),
+                                          CallbackShortcuts(
+                                            bindings: {
+                                              const SingleActivator(LogicalKeyboardKey.enter, control: true): sendBuffer,
+                                              const SingleActivator(LogicalKeyboardKey.enter, shift: true): () {
+                                                final val = promptController.text;
+                                                final selection = promptController.selection;
+                                                final newText = val.replaceRange(selection.start, selection.end, '\n');
+                                                promptController.value = TextEditingValue(text: newText, selection: TextSelection.collapsed(offset: selection.start + 1));
+                                              },
+                                            },
+                                            child: TextField(
+                                              controller: promptController,
+                                              style: TextStyle(fontSize: widget.fontSize),
+                                              maxLines: null,
+                                              minLines: 1,
+                                              decoration: const InputDecoration(hintText: 'Ctrl+Enter to send...', isDense: true, border: InputBorder.none),
+                                              onSubmitted: (v) { if (v.isNotEmpty) { setState(() => promptBuffer.add(v)); promptController.clear(); } },
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              GestureDetector(onVerticalDragUpdate: (d) { setState(() { _leftVerticalSplit += d.delta.dy / constraints.maxHeight; _leftVerticalSplit = _leftVerticalSplit.clamp(0.1, 0.9); }); _saveLayoutSettings(); }, child: MouseRegion(cursor: SystemMouseCursors.resizeUpDown, child: Container(height: 4, color: Theme.of(context).dividerColor))),
+                              Expanded(
+                                flex: ((1 - _leftVerticalSplit) * 1000).toInt(),
+                                child: Column(
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Expanded(
+                                          child: TabBar(
+                                            controller: _bottomTabController,
+                                            isScrollable: true,
+                                            tabs: bottomSessions.asMap().entries.map((e) => _buildTab(e.value, e.key, () => removeBottomSession(e.key))).toList(),
+                                          ),
+                                        ),
+                                        IconButton(icon: const Icon(Icons.add, size: 20), onPressed: () => addNewBottomSession('Output ${bottomSessions.length + 1}')),
+                                      ],
+                                    ),
+                                    Expanded(child: TabBarView(controller: _bottomTabController, children: bottomSessions.map((s) => _buildTerminalView(s)).toList())),
+                                    TelemetryStatusBar(data: _telemetryData),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        GestureDetector(onHorizontalDragUpdate: (d) { setState(() { _horizontalSplit += d.delta.dx / constraints.maxWidth; _horizontalSplit = _horizontalSplit.clamp(0.2, 0.8); }); _saveLayoutSettings(); }, child: MouseRegion(cursor: SystemMouseCursors.resizeLeftRight, child: Container(width: 4, color: Theme.of(context).dividerColor))),
+                        Expanded(
+                          flex: ((1 - _horizontalSplit) * 1000).toInt(),
+                          child: Column(
+                            children: [
+                              Expanded(flex: (_rightVerticalSplit * 1000).toInt(), child: FileBrowser(currentDir: currentDir, terminalCwd: activeTerminalCwd, onDirectoryChanged: (d) => setState(() => currentDir = d), onFileSelected: selectFile, getFileIcon: getFileIconFromPath, fontSize: widget.fontSize)),
+                              GestureDetector(onVerticalDragUpdate: (d) { setState(() { _rightVerticalSplit += d.delta.dy / constraints.maxHeight; _rightVerticalSplit = _rightVerticalSplit.clamp(0.1, 0.9); }); _saveLayoutSettings(); }, child: MouseRegion(cursor: SystemMouseCursors.resizeUpDown, child: Container(height: 4, color: Theme.of(context).dividerColor))),
+                              Expanded(flex: ((1 - _rightVerticalSplit) * 1000).toInt(), child: activeDocumentIndex == -1 ? const Center(child: Text('No file')) : EditorView(document: openDocuments[activeDocumentIndex], fontSize: widget.fontSize)),
+                            ],
+                          ),
+                        ),
+                      ],
+                    );
                   },
-                }, child: TextField(controller: promptController, style: TextStyle(fontSize: widget.fontSize), maxLines: null, minLines: 1, decoration: const InputDecoration(hintText: 'Ctrl+Enter to send...', isDense: true, border: InputBorder.none), onSubmitted: (v) { if (v.isNotEmpty) { setState(() => promptBuffer.add(v)); promptController.clear(); } })),
-              ])),
-            ])),
-            GestureDetector(onVerticalDragUpdate: (d) { setState(() { _leftVerticalSplit += d.delta.dy / constraints.maxHeight; _leftVerticalSplit = _leftVerticalSplit.clamp(0.1, 0.9); }); _saveLayoutSettings(); }, child: MouseRegion(cursor: SystemMouseCursors.resizeUpDown, child: Container(height: 4, color: Theme.of(context).dividerColor))),
-            Expanded(flex: ((1 - _leftVerticalSplit) * 1000).toInt(), child: Column(children: [
-              Row(children: [Expanded(child: TabBar(controller: _bottomTabController, isScrollable: true, tabs: bottomSessions.asMap().entries.map((e) => _buildTab(e.value, e.key, () => removeBottomSession(e.key))).toList())), IconButton(icon: const Icon(Icons.add, size: 20), onPressed: () => addNewBottomSession('Output ${bottomSessions.length + 1}'))]),
-              Expanded(child: TabBarView(controller: _bottomTabController, children: bottomSessions.map((s) => _buildTerminalView(s)).toList())),
-              TelemetryStatusBar(data: _telemetryData),
-            ])),
-          ])),
-          GestureDetector(onHorizontalDragUpdate: (d) { setState(() { _horizontalSplit += d.delta.dx / constraints.maxWidth; _horizontalSplit = _horizontalSplit.clamp(0.2, 0.8); }); _saveLayoutSettings(); }, child: MouseRegion(cursor: SystemMouseCursors.resizeLeftRight, child: Container(width: 4, color: Theme.of(context).dividerColor))),
-          Expanded(flex: ((1 - _horizontalSplit) * 1000).toInt(), child: Column(children: [
-            Expanded(flex: (_rightVerticalSplit * 1000).toInt(), child: FileBrowser(currentDir: currentDir, terminalCwd: activeTerminalCwd, onDirectoryChanged: (d) => setState(() => currentDir = d), onFileSelected: selectFile, getFileIcon: getFileIconFromPath, fontSize: widget.fontSize)),
-            GestureDetector(onVerticalDragUpdate: (d) { setState(() { _rightVerticalSplit += d.delta.dy / constraints.maxHeight; _rightVerticalSplit = _rightVerticalSplit.clamp(0.1, 0.9); }); _saveLayoutSettings(); }, child: MouseRegion(cursor: SystemMouseCursors.resizeUpDown, child: Container(height: 4, color: Theme.of(context).dividerColor))),
-            Expanded(flex: ((1 - _rightVerticalSplit) * 1000).toInt(), child: activeDocumentIndex == -1 ? const Center(child: Text('No file')) : EditorView(document: openDocuments[activeDocumentIndex], fontSize: widget.fontSize)),
-          ])),
-        ]);
-      })),
-    ]));
+                ),
+              ),
+            ],
+          ),
+        ),
+        _buildSubProcessGallery(),
+      ],
+    );
   }
 }
 
@@ -756,24 +1163,50 @@ class CloudPanel extends StatelessWidget {
   final VoidCallback onPublishWorkspace;
   final bool firebaseInitialized;
   const CloudPanel({super.key, required this.onCommand, required this.onSyncIdentity, required this.onGoogleSignIn, required this.onPublishWorkspace, required this.firebaseInitialized});
+
+  Widget _buildSection(BuildContext context, String title, Color color, List<Widget> children) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+          child: Text(title, style: TextStyle(fontWeight: FontWeight.bold, color: color, fontSize: 12, letterSpacing: 1.1)),
+        ),
+        ...children,
+        const Divider(height: 1),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Container(
       color: Theme.of(context).colorScheme.surface,
       child: ListView(children: [
-        const ListTile(title: Text('Google Cloud & Gmail', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue))),
-        ListTile(leading: const Icon(Icons.mail, size: 16, color: Colors.red), title: const Text('Login with Gmail'), subtitle: const Text('Desktop OAuth2 Flow', style: TextStyle(fontSize: 10)), dense: true, onTap: onGoogleSignIn),
-        ListTile(leading: const Icon(Icons.vpn_key, size: 16), title: const Text('ADC Login Only'), dense: true, onTap: () => onCommand(' clear; gcloud auth application-default login')),
-        const Divider(),
-        const ListTile(title: Text('Collaboration & Firebase', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green))),
-        ListTile(leading: const Icon(Icons.sync, size: 16), title: const Text('Sync Carbon Identity'), dense: true, subtitle: const Text('From active gcloud', style: TextStyle(fontSize: 10)), onTap: onSyncIdentity),
-        ListTile(leading: const Icon(Icons.cloud_upload, size: 16, color: Colors.orange), title: const Text('Publish Workspace'), dense: true, subtitle: Text(firebaseInitialized ? 'Sync to Firestore' : 'Requires Firebase Config', style: const TextStyle(fontSize: 10)), onTap: onPublishWorkspace),
-        const Divider(),
-        const ListTile(title: Text('Git & GitHub', style: TextStyle(fontWeight: FontWeight.bold))),
-        ListTile(leading: const Icon(Icons.login, size: 16), title: const Text('GH Auth Login'), dense: true, onTap: () => onCommand(' clear; gh auth login')),
-        const Divider(),
-        const ListTile(title: Text('Gemini', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.purple))),
-        ListTile(leading: const Icon(Icons.login, size: 16), title: const Text('Gemini Login'), dense: true, onTap: () => onCommand(' clear; gemini auth login')),
+        _buildSection(context, 'IDENTITY & AUTH', Colors.blueAccent, [
+          ListTile(leading: const Icon(Icons.mail, size: 16, color: Colors.red), title: const Text('Gmail Login'), subtitle: const Text('OAuth2 Flow', style: TextStyle(fontSize: 10)), dense: true, onTap: onGoogleSignIn),
+          ListTile(leading: const Icon(Icons.cloud_outlined, size: 16, color: Colors.blue), title: const Text('gcloud login'), dense: true, onTap: () => onCommand(' clear; gcloud auth login')),
+          ListTile(leading: const Icon(Icons.login, size: 16, color: Colors.white70), title: const Text('GitHub Login'), dense: true, onTap: () => onCommand(' clear; gh auth login')),
+          ListTile(leading: const Icon(Icons.local_fire_department, size: 16, color: Colors.orange), title: const Text('Firebase Login'), dense: true, onTap: () => onCommand(' clear; firebase login')),
+        ]),
+        _buildSection(context, 'GOOGLE CLOUD PLATFORM', Colors.blue, [
+          ListTile(leading: const Icon(Icons.vpn_key, size: 16), title: const Text('ADC Login'), subtitle: const Text('Application Default', style: TextStyle(fontSize: 10)), dense: true, onTap: () => onCommand(' clear; gcloud auth application-default login')),
+          ListTile(leading: const Icon(Icons.settings_suggest, size: 16), title: const Text('View Config'), dense: true, onTap: () => onCommand(' gcloud config list')),
+          ListTile(leading: const Icon(Icons.list_alt, size: 16), title: const Text('List Projects'), dense: true, onTap: () => onCommand(' gcloud projects list')),
+        ]),
+        _buildSection(context, 'FIREBASE & COLLABORATION', Colors.green, [
+          ListTile(leading: const Icon(Icons.sync, size: 16), title: const Text('Sync Carbon Identity'), dense: true, subtitle: const Text('From active gcloud', style: TextStyle(fontSize: 10)), onTap: onSyncIdentity),
+          ListTile(leading: const Icon(Icons.cloud_upload, size: 16, color: Colors.orange), title: const Text('Publish Workspace'), dense: true, subtitle: Text(firebaseInitialized ? 'Sync to Firestore' : 'Requires Firebase Config', style: const TextStyle(fontSize: 10)), onTap: onPublishWorkspace),
+          ListTile(leading: const Icon(Icons.rocket_launch, size: 16), title: const Text('Firebase Deploy'), dense: true, onTap: () => onCommand(' firebase deploy')),
+        ]),
+        _buildSection(context, 'INFRASTRUCTURE', Colors.cyan, [
+          ListTile(leading: const Icon(Icons.layers, size: 16), title: const Text('Docker PS'), dense: true, onTap: () => onCommand(' docker ps')),
+          ListTile(leading: const Icon(Icons.grid_view, size: 16), title: const Text('K8s Get All'), dense: true, onTap: () => onCommand(' kubectl get all')),
+        ]),
+        _buildSection(context, 'AI & LLM', Colors.purpleAccent, [
+          ListTile(leading: const Icon(Icons.auto_awesome, size: 16), title: const Text('Gemini Login'), dense: true, onTap: () => onCommand(' clear; gemini auth login')),
+          ListTile(leading: const Icon(Icons.model_training, size: 16), title: const Text('List Models'), dense: true, onTap: () => onCommand(' gemini models list')),
+        ]),
       ]),
     );
   }
@@ -824,5 +1257,129 @@ class _FileBrowserState extends State<FileBrowser> {
         );
       })),
     ]);
+  }
+}
+
+class SettingsDialog extends StatefulWidget {
+  final String currentThemeName;
+  final double fontSize;
+  final String carbonEmail;
+  final String collaborators;
+  final String firebaseConfigJson;
+  final String geminiKey;
+  final List<String> geminiModels;
+  final String selectedGeminiModel;
+  final Function({String? themeName, double? fontSize, String? geminiKey, String? geminiModel, String? carbonEmail, String? carbonPictureUrl, String? collaborators, String? firebaseConfigJson}) onSettingsChanged;
+
+  const SettingsDialog({
+    super.key,
+    required this.currentThemeName,
+    required this.fontSize,
+    required this.carbonEmail,
+    required this.collaborators,
+    required this.firebaseConfigJson,
+    required this.geminiKey,
+    required this.geminiModels,
+    required this.selectedGeminiModel,
+    required this.onSettingsChanged,
+  });
+
+  @override
+  State<SettingsDialog> createState() => _SettingsDialogState();
+}
+
+class _SettingsDialogState extends State<SettingsDialog> {
+  late TextEditingController _emailController;
+  late TextEditingController _collaboratorsController;
+  late TextEditingController _firebaseController;
+  late TextEditingController _geminiKeyController;
+
+  @override
+  void initState() {
+    super.initState();
+    _emailController = TextEditingController(text: widget.carbonEmail);
+    _collaboratorsController = TextEditingController(text: widget.collaborators);
+    _firebaseController = TextEditingController(text: widget.firebaseConfigJson);
+    _geminiKeyController = TextEditingController(text: widget.geminiKey);
+  }
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _collaboratorsController.dispose();
+    _firebaseController.dispose();
+    _geminiKeyController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Settings'),
+      content: SizedBox(
+        width: 400,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              DropdownButtonFormField<String>(
+                initialValue: widget.currentThemeName,
+                decoration: const InputDecoration(labelText: 'Theme'),
+                items: shelaThemes.keys.map((t) => DropdownMenuItem(value: t, child: Text(t))).toList(),
+                onChanged: (val) => widget.onSettingsChanged(themeName: val),
+              ),
+              const SizedBox(height: 16),
+              const Text('Font Size'),
+              Slider(
+                value: widget.fontSize,
+                min: 8,
+                max: 24,
+                divisions: 16,
+                label: widget.fontSize.round().toString(),
+                onChanged: (val) => widget.onSettingsChanged(fontSize: val),
+              ),
+              const Divider(),
+              TextField(
+                decoration: const InputDecoration(labelText: 'Carbon Identity (Email)'),
+                controller: _emailController,
+                onChanged: (val) => widget.onSettingsChanged(carbonEmail: val),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                decoration: const InputDecoration(labelText: 'Collaborators (Comma separated)'),
+                controller: _collaboratorsController,
+                onChanged: (val) => widget.onSettingsChanged(collaborators: val),
+              ),
+              const Divider(),
+              TextField(
+                decoration: const InputDecoration(labelText: 'Firebase Config JSON'),
+                controller: _firebaseController,
+                maxLines: 3,
+                onChanged: (val) => widget.onSettingsChanged(firebaseConfigJson: val),
+              ),
+              const Divider(),
+              TextField(
+                decoration: const InputDecoration(labelText: 'Gemini API Key'),
+                controller: _geminiKeyController,
+                obscureText: true,
+                onChanged: (val) => widget.onSettingsChanged(geminiKey: val),
+              ),
+              DropdownButtonFormField<String>(
+                initialValue: widget.geminiModels.contains(widget.selectedGeminiModel) ? widget.selectedGeminiModel : null,
+                decoration: const InputDecoration(labelText: 'Gemini Model'),
+                items: widget.geminiModels.map((m) => DropdownMenuItem(value: m, child: Text(m))).toList(),
+                onChanged: (val) => widget.onSettingsChanged(geminiModel: val),
+              ),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Close'),
+        ),
+      ],
+    );
   }
 }
